@@ -1245,7 +1245,7 @@ class GoogleUltraAutomator:
                         }
                     }
                     const els = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-                    const isTargetBtn = (e) => {
+                    const btns = els.filter(e => {
                         const t = (e.innerText || '').trim();
                         const r = e.getBoundingClientRect();
                         return r.width > 15 && r.height > 15 && r.left >= 240 && (
@@ -1255,36 +1255,17 @@ class GoogleUltraAutomator:
                             t.includes('换用此方案') ||
                             t === '升级' ||
                             t === 'Upgrade' ||
+                            t.includes('获取 Google AI Ultra') ||
                             t.includes('Get started') ||
                             t.includes('Get offer')
                         );
-                    };
-                    const btns = els.filter(isTargetBtn);
+                    });
                     if (btns.length > 0) {
-                        const getCardText = (el) => {
-                            let p = el;
-                            for (let step = 0; step < 7; step++) {
-                                if (!p || p === document.body) break;
-                                const t = (p.innerText || '');
-                                if (t.includes('Google AI Pro') || t.includes('Google AI Ultra') || t.includes('Google AI Plus')) {
-                                    return t;
-                                }
-                                p = p.parentElement;
-                            }
-                            return el.parentElement ? (el.parentElement.innerText || '') : '';
-                        };
-                        // Prioritaskan tombol pada kartu Google AI Pro, HINDARI kartu Google AI Ultra!
-                        const proBtn = btns.find(b => {
-                            const ctxt = getCardText(b);
-                            return ctxt.includes('Google AI Pro') && !ctxt.includes('Ultra');
-                        });
-                        // Jika tidak ada kartu bertuliskan Pro eksplisit, hindari tombol yang berada di dalam Ultra
-                        const nonUltraBtn = btns.find(b => !getCardText(b).includes('Ultra'));
-                        const btn = proBtn || nonUltraBtn || btns[0];
+                        const btn = btns[btns.length - 1];
                         btn.scrollIntoView({block: 'center'});
                         const r = btn.getBoundingClientRect();
                         btn.click();
-                        return {x: r.left + r.width / 2, y: r.top + r.height / 2, text: (btn.innerText || '').trim(), card: getCardText(btn).slice(0, 40)};
+                        return {x: r.left + r.width / 2, y: r.top + r.height / 2, text: (btn.innerText || '').trim()};
                     }
                     return null;
                 }"""
