@@ -1213,12 +1213,17 @@ class GoogleUltraAutomator:
         clean_txt = ""
 
         # Primary trigger: one.google.com/plans?hl=id clicking the LAST action button (proven 100% reliable across L1, L2, L3)
-        for attempt_url in ("https://one.google.com/plans?hl=id",) * 5:
+        for attempt_i, attempt_url in enumerate(("https://one.google.com/plans?hl=id",) * 5):
             if target_fr:
                 break
-            self.log(f"[{step_tag}] Sedang membuka halaman skema untuk memicu popup checkout Ngbm: {attempt_url}")
+            self.log(f"[{step_tag}] Sedang membuka halaman skema untuk memicu popup checkout Ngbm: {attempt_url} (Percobaan {attempt_i + 1}/5)")
             await self.safe_goto(page, attempt_url, timeout=40000)
-            await asyncio.sleep(3.5)
+            if attempt_i > 0:
+                try:
+                    await page.reload(wait_until="domcontentloaded")
+                except Exception:
+                    pass
+            await asyncio.sleep(3.0)
             if "accounts.google.com" in page.url or "gds.google.com" in page.url:
                 self.log(f"[{step_tag}] Halaman memicu verifikasi masuk, sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
