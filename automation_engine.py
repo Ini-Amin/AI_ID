@@ -1051,7 +1051,7 @@ class GoogleUltraAutomator:
                             const hasSubBtn = !needsCard && btns.some(b => {
                                 const bt = (b.innerText || '').trim().toLowerCase();
                                 const r = b.getBoundingClientRect();
-                                return (bt === '订阅' || bt === 'subscribe') && r.width > 10 && r.height > 10;
+                                return (bt === '订阅' || bt === 'subscribe' || bt === 'berlangganan' || bt.includes('langganan')) && r.width > 10 && r.height > 10;
                             });
                             const hasErr = text.includes('Something went wrong') || text.includes('unable to change') || text.includes('无法更改') || text.includes('出了点问题') || text.includes('OR-') || text.includes('BX-');
                             return {ready: hasSubBtn || hasErr, text: text};
@@ -1063,7 +1063,7 @@ class GoogleUltraAutomator:
                             return fr, clean_txt
                         elif state_info and not inline_card_saved:
                             raw_t = state_info.get("text", "")
-                            if any(k in raw_t for k in ("添加付款方式", "首先添加付款方式", "添加信用卡或借记卡", "添加卡", "Add a payment method", "Add credit or debit card", "Add card")):
+                            if any(k in raw_t for k in ("添加付款方式", "首先添加付款方式", "添加信用卡或借记卡", "添加卡", "Add a payment method", "Add credit or debit card", "Add card", "Tambahkan metode pembayaran", "Tambahkan kartu kredit atau debit", "Tambahkan kartu")):
                                 add_btn = fr.locator("text=/添加信用卡或借记卡|添加卡|Add credit or debit card|Add card|Tambahkan kartu kredit atau debit|Tambahkan kartu/i").last
                                 if await add_btn.count() > 0 and await add_btn.is_visible():
                                     self.log(f"[{step_tag or 'modal'}] Mendeteksi popup memerlukan penambahan metode pembayaran terlebih dahulu, sedang mengeksekusi ikatan kartu bea cukai inline popup (ZIP 97201)...")
@@ -1076,7 +1076,7 @@ class GoogleUltraAutomator:
                                         const els = Array.from(document.querySelectorAll('button, [role="button"], div, span'));
                                         for (let i = els.length - 1; i >= 0; i--) {
                                             const t = (els[i].innerText || '').trim();
-                                            if (t === '添加卡' || t === '添加信用卡或借记卡' || t === 'Add card' || t === 'Add credit or debit card') {
+                                            if (t === '添加卡' || t === '添加信用卡或借记卡' || t === 'Add card' || t === 'Add credit or debit card' || t === 'Tambahkan kartu' || t.includes('Tambahkan kartu')) {
                                                 els[i].click();
                                                 break;
                                             }
@@ -1129,7 +1129,7 @@ class GoogleUltraAutomator:
                                                         await tf.evaluate(
                                                             """() => {
                                                             const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
-                                                            const b = btns.find(e => (e.innerText || '').includes('保存') || (e.innerText || '').includes('Save'));
+                                                            const b = btns.find(e => (e.innerText || '').includes('保存') || (e.innerText || '').includes('Save') || (e.innerText || '').includes('Simpan'));
                                                             if (b) b.click();
                                                         }"""
                                                         )
