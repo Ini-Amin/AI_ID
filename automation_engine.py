@@ -1223,7 +1223,7 @@ class GoogleUltraAutomator:
                     await page.reload(wait_until="domcontentloaded")
                 except Exception:
                     pass
-            await asyncio.sleep(3.0)
+            await asyncio.sleep(4.0)  # Jeda stabil 3-5 detik agar skrip Google & RPC terinisialisasi penuh
             if "accounts.google.com" in page.url or "gds.google.com" in page.url:
                 self.log(f"[{step_tag}] Halaman memicu verifikasi masuk, sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
