@@ -78,6 +78,32 @@ def kill_port(port: int):
                     os.kill(int(pid_s), 9)
         except Exception:
             pass
+def kill_profile_processes(profile_dir: str):
+    if not profile_dir or not os.path.exists(profile_dir):
+        return
+    if os.name == "nt":
+        try:
+            norm = profile_dir.replace("\\", "\\\\")
+            cmd = f'wmic process where "commandline like \'%{norm}%\'" get processid'
+            out = subprocess.check_output(cmd, shell=True).decode(errors="ignore")
+            for line in out.splitlines():
+                p = line.strip()
+                if p.isdigit():
+                    subprocess.run(f"taskkill /F /T /PID {p}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+    else:
+        try:
+            out = subprocess.check_output(f"pgrep -f '{profile_dir}' 2>/dev/null || true", shell=True).decode().strip()
+            for p in out.split():
+                if p.isdigit():
+                    try:
+                        os.kill(int(p), 9)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
 
 
 CHROME_PATH = _find_chrome_path()
@@ -382,7 +408,7 @@ def resolve_account_proxy(account: Dict[str, Any], target_region: str, proxy_tem
                     _FLOPPY_CACHE[proxy_template.strip()] = raw
             except Exception:
                 pass
-    cc_lower = (target_region or "TR").lower()
+    cc_lower = (target_region or "US").lower()
     cc_upper = cc_lower.upper()
     sess_seed = re.sub(r"[^a-zA-Z0-9]", "", account.get("id", "acc")) + hashlib.md5(
         (account.get("email", "") or account.get("id", "")).encode("utf-8")
@@ -682,7 +708,7 @@ class GoogleUltraAutomator:
 
             if "confirmidentifier" in page_obj.url:
                 self.log("Mendeteksi halaman konfirmasi identitas, sedang mengklik [Berikutnya/Next]...")
-                nxt_btn = page_obj.locator('#identifierNext button, button:has-text("下一步"), button:has-text("Next"), #identifierNext').first
+                nxt_btn = page_obj.locator('#identifierNext button, button:has-text("下一步"), button:has-text("Next"), button:has-text("Berikutnya"), #identifierNext').first
                 if await nxt_btn.count() > 0:
                     try:
                         await nxt_btn.click(timeout=3000)
@@ -728,7 +754,7 @@ class GoogleUltraAutomator:
                 self.log("Sedang secara otomatis mengisi password untuk autentikasi...")
                 try:
                     await pwd.first.fill(password)
-                    next_btn = page_obj.locator('#passwordNext, button:has-text("下一步"), button:has-text("Next")').first
+                    next_btn = page_obj.locator('#passwordNext, button:has-text("下一步"), button:has-text("Next"), button:has-text("Berikutnya")').first
                     if await next_btn.count() > 0 and await next_btn.is_visible():
                         await next_btn.click()
                     else:
@@ -814,7 +840,7 @@ class GoogleUltraAutomator:
                     self.log(f"Sedang secara otomatis mengisi kode verifikasi dinamis 2FA: {code}")
                     try:
                         await totp.first.fill(code)
-                        next_btn = page_obj.locator('#totpNext, button:has-text("下一步"), button:has-text("Next")').first
+                        next_btn = page_obj.locator('#totpNext, button:has-text("下一步"), button:has-text("Next"), button:has-text("Berikutnya")').first
                         if await next_btn.count() > 0 and await next_btn.is_visible():
                             await next_btn.click()
                         else:
@@ -838,7 +864,7 @@ class GoogleUltraAutomator:
 
         await self.safe_goto(
             page,
-            "https://accounts.google.com/ServiceLogin?hl=zh-CN&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Dzh-CN",
+            "https://accounts.google.com/ServiceLogin?hl=id&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Dzh-CN",
             timeout=40000,
         )
         await asyncio.sleep(3.5)
@@ -891,7 +917,7 @@ class GoogleUltraAutomator:
                 if await email_loc.count() > 0 and await email_loc.first.is_visible() and "challenge/kpe" not in page.url:
                     self.log(f"Memasukkan email: {email}")
                     await email_loc.first.fill(email)
-                    next_btn = page.locator('#identifierNext, button:has-text("下一步"), button:has-text("Next")').first
+                    next_btn = page.locator('#identifierNext, button:has-text("下一步"), button:has-text("Next"), button:has-text("Berikutnya")').first
                     if await next_btn.count() > 0 and await next_btn.is_visible():
                         await next_btn.click()
                     else:
@@ -906,7 +932,7 @@ class GoogleUltraAutomator:
                 if "one.google.com" in page.url and "gds.google.com" not in page.url:
                     break
                 btn = page.locator(
-                    'button:has-text("Not now"), button:has-text("Skip"), button:has-text("以后再说"), button:has-text("跳过"), button:has-text("取消"), button:has-text("Cancel"), button:has-text("我同意"), button:has-text("继续")'
+                    'button:has-text("Not now"), button:has-text("Skip"), button:has-text("以后再说"), button:has-text("跳过"), button:has-text("取消"), button:has-text("Cancel"), button:has-text("我同意"), button:has-text("继续"), button:has-text("Batal"), button:has-text("Lewati"), button:has-text("Nanti saja"), button:has-text("Lain kali"), button:has-text("Lanjutkan")'
                 )
                 if await btn.count() > 0 and await btn.first.is_visible():
                     await btn.first.click(force=True)
@@ -920,7 +946,7 @@ class GoogleUltraAutomator:
                 self.log("⚠️ Halaman login merespons lambat, sedang mengulang proses pengiriman login...")
                 await self.safe_goto(
                     page,
-                    "https://accounts.google.com/ServiceLogin?hl=zh-CN&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Dzh-CN",
+                    "https://accounts.google.com/ServiceLogin?hl=id&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Dzh-CN",
                     timeout=40000,
                 )
                 await asyncio.sleep(3.5)
@@ -930,9 +956,9 @@ class GoogleUltraAutomator:
 
     async def get_current_sub_id(self, page) -> Optional[str]:
         for url in (
-            "https://one.google.com/settings?expand=upgrade&hl=zh-CN",
-            "https://one.google.com/plans?hl=zh-CN",
-            "https://one.google.com/ai-nye?g1_landing_page=0&hl=zh-CN",
+            "https://one.google.com/settings?expand=upgrade&hl=id",
+            "https://one.google.com/plans?hl=id",
+            "https://one.google.com/ai-nye?g1_landing_page=0&hl=id",
         ):
             await self.safe_goto(page, url, timeout=40000)
             for _ in range(6):
@@ -957,7 +983,7 @@ class GoogleUltraAutomator:
         return None
 
     async def inspect_play_subscriptions(self, page) -> str:
-        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=zh-CN", timeout=40000)
+        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=id", timeout=40000)
         await asyncio.sleep(3)
         if "accounts.google.com" in page.url or "gds.google.com" in page.url:
             await self.pass_reauth_on_page(page)
@@ -968,7 +994,7 @@ class GoogleUltraAutomator:
 
     async def ensure_subscription_active(self, page):
         """If the account has a cancelled subscription ('重新订阅'), click Resubscribe so Mode 5 stacking works."""
-        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=zh-CN", timeout=40000)
+        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=id", timeout=40000)
         await asyncio.sleep(3.5)
         if "accounts.google.com" in page.url or "gds.google.com" in page.url:
             await self.pass_reauth_on_page(page)
@@ -1020,7 +1046,7 @@ class GoogleUltraAutomator:
                             const clone = document.body.cloneNode(true);
                             clone.querySelectorAll('script, style, noscript').forEach(el => el.remove());
                             const text = (clone.innerText || '').trim();
-                            const needsCard = text.includes('添加付款方式') || text.includes('首先添加付款方式') || text.includes('添加信用卡或借记卡') || text.includes('添加卡') || text.includes('Add a payment method') || text.includes('Add credit or debit card') || text.includes('Add card');
+                            const needsCard = text.includes('添加付款方式') || text.includes('首先添加付款方式') || text.includes('添加信用卡或借记卡') || text.includes('添加卡') || text.includes('Add a payment method') || text.includes('Add credit or debit card') || text.includes('Add card') || text.includes('Tambahkan metode pembayaran') || text.includes('Tambahkan kartu kredit atau debit') || text.includes('Tambahkan kartu');
                             const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
                             const hasSubBtn = !needsCard && btns.some(b => {
                                 const bt = (b.innerText || '').trim().toLowerCase();
@@ -1038,7 +1064,7 @@ class GoogleUltraAutomator:
                         elif state_info and not inline_card_saved:
                             raw_t = state_info.get("text", "")
                             if any(k in raw_t for k in ("添加付款方式", "首先添加付款方式", "添加信用卡或借记卡", "添加卡", "Add a payment method", "Add credit or debit card", "Add card")):
-                                add_btn = fr.locator("text=/添加信用卡或借记卡|添加卡|Add credit or debit card|Add card/i").last
+                                add_btn = fr.locator("text=/添加信用卡或借记卡|添加卡|Add credit or debit card|Add card|Tambahkan kartu kredit atau debit|Tambahkan kartu/i").last
                                 if await add_btn.count() > 0 and await add_btn.is_visible():
                                     self.log(f"[{step_tag or 'modal'}] Mendeteksi popup memerlukan penambahan metode pembayaran terlebih dahulu, sedang mengeksekusi ikatan kartu bea cukai inline popup (ZIP 97201)...")
                                     try:
@@ -1096,7 +1122,7 @@ class GoogleUltraAutomator:
                                                         await vis.nth(4).fill("")
                                                         await vis.nth(4).press_sequentially(zip_v, delay=35)
                                                         await asyncio.sleep(0.3)
-                                                    sbtn = tf.locator('button:has-text("保存卡"), button:has-text("保存"), button:has-text("Save card"), button:has-text("Save"), [role="button"]:has-text("保存")').first
+                                                    sbtn = tf.locator('button:has-text("Simpan kartu"), button:has-text("Simpan"), button:has-text("Save card"), button:has-text("Save"), button:has-text("保存卡"), button:has-text("保存"), [role="button"]:has-text("Simpan"), [role="button"]:has-text("保存")').first
                                                     if await sbtn.count() > 0:
                                                         await sbtn.click(force=True)
                                                     else:
@@ -1186,8 +1212,8 @@ class GoogleUltraAutomator:
         target_fr = None
         clean_txt = ""
 
-        # Primary trigger: one.google.com/plans?hl=zh-CN clicking the LAST action button (proven 100% reliable across L1, L2, L3)
-        for attempt_url in ("https://one.google.com/plans?hl=zh-CN",) * 5:
+        # Primary trigger: one.google.com/plans?hl=id clicking the LAST action button (proven 100% reliable across L1, L2, L3)
+        for attempt_url in ("https://one.google.com/plans?hl=id",) * 5:
             if target_fr:
                 break
             self.log(f"[{step_tag}] Sedang membuka halaman skema untuk memicu popup checkout Ngbm: {attempt_url}")
@@ -1215,7 +1241,7 @@ class GoogleUltraAutomator:
                         const r = e.getBoundingClientRect();
                         return r.width > 15 && r.height > 15 && r.left >= 240 && (
                             t.includes('开始使用') ||
-                            t.includes('获取优惠') ||
+                            t.includes('获取优惠') || t.includes('Dapatkan penawaran') || t.includes('Get offer') || t.includes('Mulai') || t.includes('Langganan') ||
                             t.includes('获取折扣') ||
                             t.includes('换用此方案') ||
                             t === '升级' ||
@@ -1321,7 +1347,7 @@ class GoogleUltraAutomator:
                 const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
                 const sub = btns.find(b => {
                     const bt = (b.innerText || '').trim();
-                    return bt === '订阅' || bt === 'Subscribe';
+                    return bt === '订阅' || bt === 'Subscribe' || bt === 'Berlangganan' || bt.toLowerCase().includes('langganan');
                 });
                 if (sub) {
                     sub.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
@@ -1450,7 +1476,7 @@ class GoogleUltraAutomator:
                             self.log(f"✅ [{step_tag}] Mendeteksi konfirmasi sukses langganan！")
                             await self.save_screenshot(page, f"{step_tag}_after_click")
                             try:
-                                dismiss_btn = f2.locator('button:has-text("以后再说"), [role="button"]:has-text("以后再说"), button:has-text("Not now"), [role="button"]:has-text("Not now"), button:has-text("不用了"), button:has-text("知道了")').first
+                                dismiss_btn = f2.locator('button:has-text("Nanti saja"), button:has-text("Lain kali"), button:has-text("Mengerti"), button:has-text("以后再说"), [role="button"]:has-text("以后再说"), button:has-text("Not now"), [role="button"]:has-text("Not now"), button:has-text("不用了"), button:has-text("知道了")').first
                                 if await dismiss_btn.count() > 0 and await dismiss_btn.is_visible():
                                     self.log(f"[{step_tag}] Sedang mengklik【Nanti Saja】untuk menutup popup agar menyinkronkan status pesanan...")
                                     try:
@@ -1651,12 +1677,12 @@ class GoogleUltraAutomator:
         self.update_state(status="running", current_step=5, step_message="Langkah 5/5: Sedang membatalkan perpanjangan otomatis & mengunci tanggal kedaluwarsa 2028 (screenshot verifikasi US$0.00)...")
         self.log("=== Langkah 5/5: Membatalkan Perpanjangan Otomatis & Mengambil Bukti Tanggal Kedaluwarsa 2028 Akhir ===")
 
-        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=zh-CN", timeout=40000)
+        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=id", timeout=40000)
         await asyncio.sleep(4)
         play_txt = await page.inner_text("body")
 
         if self.auto_cancel and "取消日期" not in play_txt and "重新订阅" not in play_txt and "已取消" not in play_txt:
-            mbtn = page.get_by_text("管理", exact=True)
+            mbtn = page.locator('text=/^管理$|^Manage$|^Kelola$/i')
             for i in range(await mbtn.count()):
                 if await mbtn.nth(i).is_visible():
                     await mbtn.nth(i).click()
@@ -1664,14 +1690,14 @@ class GoogleUltraAutomator:
 
             for _ in range(15):
                 await asyncio.sleep(0.5)
-                cbtn = page.get_by_text("取消订阅", exact=True)
+                cbtn = page.locator('text=/^取消订阅$|^Cancel subscription$|^Batalkan langganan$/i')
                 if await cbtn.count() > 0 and await cbtn.first.is_visible():
                     await cbtn.first.click()
                     break
 
             await asyncio.sleep(2.5)
             # Handle optional retention screen ("不，谢谢" / "继续")
-            no_thanks = page.locator('button:has-text("不，谢谢"), button:has-text("不用了"), button:has-text("No thanks"), [role="button"]:has-text("不，谢谢"), [role="button"]:has-text("不用了")')
+            no_thanks = page.locator('button:has-text("Tidak, terima kasih"), button:has-text("不，谢谢"), button:has-text("不用了"), button:has-text("No thanks"), [role="button"]:has-text("Tidak, terima kasih"), [role="button"]:has-text("不，谢谢")')
             if await no_thanks.count() > 0 and await no_thanks.first.is_visible():
                 await no_thanks.first.click()
                 await asyncio.sleep(2.0)
@@ -1697,7 +1723,7 @@ class GoogleUltraAutomator:
                     await vis_radios.last.click(force=True)
                 except Exception:
                     pass
-            reason = page.locator('text=/拒绝回答|不愿透露|其他原因|暂不需要|Decline to answer/i').first
+            reason = page.locator('text=/拒绝回答|不愿透露|其他原因|暂不需要|Decline to answer|Tolak menjawab|Lainnya/i').first
             if await reason.count() > 0 and await reason.is_visible():
                 try:
                     await reason.click(force=True)
@@ -1705,14 +1731,14 @@ class GoogleUltraAutomator:
                     pass
 
             await asyncio.sleep(0.8)
-            cnext = page.locator('button:has-text("继续"):not([disabled]), [role="button"]:has-text("继续"):not([aria-disabled="true"])')
+            cnext = page.locator('button:has-text("Lanjutkan"):not([disabled]), button:has-text("Continue"):not([disabled]), button:has-text("继续"):not([disabled]), [role="button"]:has-text("Lanjutkan"):not([aria-disabled="true"])')
             for i in range(await cnext.count()):
                 if await cnext.nth(i).is_visible():
                     await cnext.nth(i).click(timeout=8000)
                     break
             await asyncio.sleep(2.5)
 
-            final_cbtn = page.get_by_text("取消订阅", exact=True)
+            final_cbtn = page.locator('text=/^取消订阅$|^Cancel subscription$|^Batalkan langganan$/i')
             fcnt = await final_cbtn.count()
             for i in range(fcnt - 1, -1, -1):
                 if await final_cbtn.nth(i).is_visible():
@@ -1725,7 +1751,7 @@ class GoogleUltraAutomator:
             await asyncio.sleep(3)
 
         # Final verification on Play Subscriptions
-        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=zh-CN", timeout=40000)
+        await self.safe_goto(page, "https://play.google.com/store/account/subscriptions?hl=id", timeout=40000)
         await asyncio.sleep(3.5)
         final_shot = await self.save_screenshot(page, "step5_final_verified")
         final_txt = " | ".join([l.strip() for l in (await page.inner_text("body")).splitlines() if l.strip()])
@@ -1822,13 +1848,34 @@ class GoogleUltraAutomator:
 
         chrome_args.append("about:blank")
 
-        # Bersihkan port jika masih ada proses yang mendengarkan
+        # 1. Bersihkan instance Chrome lama yang masih mengunci profil ini
+        kill_profile_processes(user_data_dir)
+        # 2. Bersihkan port jika masih ada proses yang mendengarkan
         kill_port(self.port)
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.5)
 
         self.proc = subprocess.Popen(chrome_args)
-        await asyncio.sleep(2.8)
 
+        # 3. Polling port CDP hingga Chrome siap (maksimal 15 detik)
+        cdp_ready = False
+        import urllib.request
+        cdp_url = f"http://127.0.0.1:{self.port}/json/version"
+        for _ in range(30):
+            await asyncio.sleep(0.5)
+            self.check_stop()
+            try:
+                with urllib.request.urlopen(cdp_url, timeout=0.8) as resp:
+                    if resp.status == 200:
+                        cdp_ready = True
+                        break
+            except Exception:
+                pass
+
+        if not cdp_ready:
+            raise RuntimeError(
+                f"Chrome gagal membuka port debugging {self.port} setelah 15 detik. "
+                f"Pastikan Chrome terpasang dengan benar dan tidak diblokir sistem."
+            )
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.connect_over_cdp(f"http://127.0.0.1:{self.port}")

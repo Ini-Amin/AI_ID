@@ -1,9 +1,27 @@
+# === DATA SENSITIF (JANGAN PERNAH DI-COMMIT) ===
+config.json
+*.local.json
+.env
+*.env
+
+# Sesi Profil Chrome (berisi session cookie Google aktif)
+profiles/
+
+# Bukti Screenshot (berisi email & informasi langganan)
+screenshots/*
+!screenshots/.gitkeep
+
+# Python / Environment
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.env
 .venv/
 env/
 venv/
 *.log
+
+# Sistem Operasi
+.DS_Store
+Thumbs.db
+desktop.ini

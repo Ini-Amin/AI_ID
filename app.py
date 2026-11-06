@@ -2,13 +2,13 @@ import asyncio
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import time
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from automation_engine import (
@@ -28,12 +28,44 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
+CONSOLE_TOKEN: str = secrets.token_urlsafe(32)
+
 app = FastAPI(title="Google AI Pro (5 TB) - Kontroler Otomatis 2 Tahun Tanpa Biaya")
-app.mount("/screenshots", StaticFiles(directory=SCREENSHOTS_DIR), name="screenshots")
+
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    # 1. Anti-DNS Rebinding: Hanya izinkan Host 127.0.0.1 atau localhost
+    host = (request.headers.get("host") or "").lower().strip()
+    if host and not any(host == h or host.startswith(h + ":") for h in ("127.0.0.1", "localhost")):
+        return HTMLResponse(
+            content=json.dumps({"detail": "403 Forbidden: Serangan DNS Rebinding terdeteksi. Host tidak sah."}),
+            status_code=403,
+            media_type="application/json",
+        )
+
+    # 2. Token Auth pada rute internal API dan Screenshot
+    path = request.url.path
+    if path.startswith("/api/") or path.startswith("/screenshots/"):
+        token = request.headers.get("X-Console-Token") or request.query_params.get("token")
+        if not token or not secrets.compare_digest(token, CONSOLE_TOKEN):
+            return HTMLResponse(
+                content=json.dumps({"detail": "401 Unauthorized: Token sesi lokal hilang atau tidak valid"}),
+                status_code=401,
+                media_type="application/json",
+            )
+
+    response = await call_next(request)
+    # Security response headers
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
 
 # Global runtime state
 LOGS: List[str] = [
-    f"[{time.strftime('%H:%M:%S')}] [SYSTEM] 🚀 Google AI Pro (5 TB) 2 Tahun Tanpa Biaya (US$0.00 -> 2028-10) Kontroler Otomatis Siap!"
+    f"[{time.strftime('%H:%M:%S')}] [SYSTEM] 🚀 Google AI Pro (5 TB) 2 Tahun Tanpa Biaya (US$0.00 -> 2028-10) Kontroler Otomatis Siap! (Session Auth Token Diaktifkan)"
 ]
 ACTIVE_TASKS: Dict[str, GoogleUltraAutomator] = {}
 BATCH_RUNNING: bool = False
@@ -50,6 +82,10 @@ def load_config() -> Dict[str, Any]:
 def save_config(cfg: Dict[str, Any]):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+    try:
+        os.chmod(CONFIG_PATH, 0o600)
+    except Exception:
+        pass
 
 
 def append_log(line: str):
@@ -89,7 +125,17 @@ class AccountActionReq(BaseModel):
 async def index():
     html_path = os.path.join(TEMPLATES_DIR, "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
-        return f.read()
+        html = f.read()
+    return html.replace("__CONSOLE_TOKEN_PLACEHOLDER__", CONSOLE_TOKEN)
+
+
+@app.get("/screenshots/{filename}")
+async def get_screenshot(filename: str):
+    safe_name = os.path.basename(filename)
+    fpath = os.path.join(SCREENSHOTS_DIR, safe_name)
+    if not os.path.exists(fpath):
+        raise HTTPException(status_code=404, detail="File screenshot tidak ditemukan")
+    return FileResponse(fpath)
 
 
 @app.get("/api/state")
@@ -98,7 +144,20 @@ async def get_state():
     rem_sec = 30 - (int(time.time()) % 30)
     accounts_out = []
     for acc in cfg.get("accounts", []):
-        item = dict(acc)
+        item = {
+            "id": acc.get("id"),
+            "email": acc.get("email"),
+            "password": "••••••••" if acc.get("password") else "",
+            "recovery_email": acc.get("recovery_email", ""),
+            "has_totp": bool(acc.get("totp_secret")),
+            "status": acc.get("status", "pending"),
+            "current_step": acc.get("current_step", 0),
+            "step_message": acc.get("step_message", ""),
+            "expiry_date": acc.get("expiry_date", ""),
+            "last_screenshot": acc.get("last_screenshot", ""),
+            "ip_info": acc.get("ip_info", ""),
+            "proxy": bool(acc.get("proxy")),
+        }
         try:
             item["totp_now"] = get_totp(acc.get("totp_secret", ""))
         except Exception:
@@ -107,12 +166,26 @@ async def get_state():
         item["is_running"] = acc["id"] in ACTIVE_TASKS
         accounts_out.append(item)
 
+    raw_card = cfg.get("card", {})
+    raw_num = re.sub(r"\s+", "", raw_card.get("number", ""))
+    masked_card = {
+        "number": f"•••• •••• •••• {raw_num[-4:]}" if len(raw_num) >= 4 else "",
+        "has_card": bool(raw_num),
+        "exp_month": raw_card.get("exp_month", ""),
+        "exp_year": raw_card.get("exp_year", ""),
+        "has_cvc": bool(raw_card.get("cvc", "").strip()),
+        "holder": raw_card.get("holder", ""),
+        "address_line1": raw_card.get("address_line1", "700 SW 5th Ave"),
+        "postal_code": raw_card.get("postal_code", "97201"),
+        "province": raw_card.get("province", "OR"),
+    }
+
     return {
         "target_region": cfg.get("target_region", "US"),
         "target_plan": cfg.get("target_plan", "pro_2year_zero"),
         "auto_cancel": cfg.get("auto_cancel", True),
         "proxy_template": cfg.get("proxy_template", ""),
-        "card": cfg.get("card", {}),
+        "card": masked_card,
         "accounts": accounts_out,
         "logs": LOGS[-250:],
         "batch_running": BATCH_RUNNING,
@@ -127,14 +200,24 @@ async def update_config(req: ConfigUpdateReq):
     cfg["target_plan"] = req.target_plan
     cfg["auto_cancel"] = req.auto_cancel
     cfg["proxy_template"] = req.proxy_template.strip()
-    cfg["card"] = req.card
+
+    old_card = cfg.get("card", {})
+    new_card = dict(req.card)
+    num = (new_card.get("number") or "").strip()
+    if not num or "•" in num or "*" in num:
+        new_card["number"] = old_card.get("number", "")
+    cvc = (new_card.get("cvc") or "").strip()
+    if not cvc:
+        new_card["cvc"] = old_card.get("cvc", "")
+
+    cfg["card"] = new_card
     save_config(cfg)
     append_log(f"[{time.strftime('%H:%M:%S')}] [CONFIG] ✅ Konfigurasi disimpan (Wilayah target: {req.target_region} | Templat Proksi: {'Aktif' if req.proxy_template.strip() else 'Default Sistem'})")
     return {"ok": True}
 
 
 class ProxyTestReq(BaseModel):
-    target_region: str = "TR"
+    target_region: str = "US"
     proxy_template: str = ""
 
 
@@ -142,7 +225,7 @@ class ProxyTestReq(BaseModel):
 async def test_proxy(req: ProxyTestReq):
     cfg = load_config()
     tpl = (req.proxy_template or cfg.get("proxy_template") or "").strip()
-    region = (req.target_region or cfg.get("target_region") or "TR").upper()
+    region = (req.target_region or cfg.get("target_region") or "US").upper()
     resolved = resolve_account_proxy({"id": f"probe{int(time.time())%1000}", "email": "probe@gmail.com"}, region, tpl)
     if not resolved:
         return {"ok": False, "message": "Templat proksi belum diisi"}
@@ -454,9 +537,9 @@ async def open_browser_manual(req: AccountActionReq):
 
     chrome_args.extend(
         [
-            "https://one.google.com/plans?hl=zh-CN",
-            "https://play.google.com/store/account/subscriptions?hl=zh-CN",
-            "https://play.google.com/store/account/orderhistory?hl=zh-CN",
+            "https://one.google.com/plans?hl=id",
+            "https://play.google.com/store/account/subscriptions?hl=id",
+            "https://play.google.com/store/account/orderhistory?hl=id",
         ]
     )
     _launch_on_interactive_desktop(chrome_args)
@@ -468,4 +551,9 @@ async def open_browser_manual(req: AccountActionReq):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
+    print("\n" + "=" * 65, flush=True)
+    print("  🚀 Google AI Pro (5 TB) Kontroler Otomatis Aktif!", flush=True)
+    print("  🌐 Dashboard URL : http://127.0.0.1:8765", flush=True)
+    print("  ⏹  Tekan CTRL+C untuk menghentikan server", flush=True)
+    print("=" * 65 + "\n", flush=True)
+    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="info")

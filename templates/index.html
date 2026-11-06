@@ -562,6 +562,23 @@
   </div>
 
   <script>
+    const CONSOLE_TOKEN = "__CONSOLE_TOKEN_PLACEHOLDER__";
+
+    // Otomatis sertakan X-Console-Token pada semua pemanggilan API lokal
+    const _origFetch = window.fetch;
+    window.fetch = function(url, options = {}) {
+      if (typeof url === 'string' && (url.startsWith('/api/') || url.startsWith('/screenshots/'))) {
+        options = options || {};
+        options.headers = options.headers || {};
+        if (options.headers instanceof Headers) {
+          options.headers.set('X-Console-Token', CONSOLE_TOKEN);
+        } else {
+          options.headers['X-Console-Token'] = CONSOLE_TOKEN;
+        }
+      }
+      return _origFetch.call(this, url, options);
+    };
+
     let configInitialized = false;
     let selectedStartSteps = {};
     let copiedAccountMap = {};
@@ -570,6 +587,10 @@
     async function fetchState() {
       try {
         const res = await fetch('/api/state');
+        if (res.status === 401) {
+          console.error('Sesi lokal kadaluarsa / token salah');
+          return;
+        }
         const data = await res.json();
 
         if (!configInitialized) {
@@ -581,7 +602,9 @@
           document.getElementById('cfgCardNumber').value = c.number || '';
           document.getElementById('cfgExpMonth').value = c.exp_month || '';
           document.getElementById('cfgExpYear').value = c.exp_year || '';
-          document.getElementById('cfgCvc').value = c.cvc || '';
+          if (c.has_cvc) {
+            document.getElementById('cfgCvc').placeholder = 'Tersimpan (kosongkan jika tidak diubah)';
+          }
           document.getElementById('cfgHolder').value = c.holder || '';
           document.getElementById('cfgAddr').value = c.address_line1 || '700 SW 5th Ave';
           document.getElementById('cfgZip').value = c.postal_code || '97201';
@@ -817,7 +840,9 @@
       const expM = document.getElementById('cfgExpMonth').value.trim();
       const expY = document.getElementById('cfgExpYear').value.trim();
       const cvc = document.getElementById('cfgCvc').value.trim();
-      if (num.length < 12 || !expM || !expY || !cvc) {
+      const cvcSaved = document.getElementById('cfgCvc').placeholder.includes('Tersimpan');
+      const cardSaved = num.includes('•') || num.length >= 12;
+      if (!cardSaved || !expM || !expY || (!cvc && !cvcSaved)) {
         alert('⚠️ Silakan isi informasi kartu pembayaran Anda di panel kiri【Pengaturan Global & Ikatan Kartu Bea Cukai Inline】(nomor kartu, periode berlaku bulan/tahun, kode keamanan CVC) sebelum mulai menjalankan!');
         document.getElementById('cfgCardNumber').focus();
         return false;
@@ -906,10 +931,9 @@
 
     function showScreenshot(accId, filename) {
       document.getElementById('modalTitle').textContent = `${accId} Screenshot Verifikasi Terbaru (${filename})`;
-      document.getElementById('modalImg').src = `/screenshots/${filename}?t=${Date.now()}`;
+      document.getElementById('modalImg').src = `/screenshots/${filename}?token=${encodeURIComponent(CONSOLE_TOKEN)}&t=${Date.now()}`;
       document.getElementById('imgModal').style.display = 'flex';
     }
-
     function closeModal() {
       document.getElementById('imgModal').style.display = 'none';
     }
