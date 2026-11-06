@@ -127,23 +127,23 @@ PREFIX           = "subs:com.google.android.apps.subscriptions.red:"
 def check_zero_cost(clean_txt: str) -> tuple[bool, str]:
     """
     Evaluasi fail-closed untuk proteksi $0.00:
-    1. Tolak jika ada tagihan non-nol untuk hari ini (due today / total today / 今天支付).
-    2. Wajib ada bukti nominal tepat US$0.00 / $0.00 atau Free trial.
+    1. Tolak jika ada tagihan non-nol untuk hari ini (due today / total today / 今天支付 / hari ini).
+    2. Wajib ada bukti nominal tepat US$0.00 / US$0,00 atau Free trial / Uji coba gratis.
     """
     import html as _html
     txt = _html.unescape(re.sub(r"<[^>]+>", " ", clean_txt or ""))
     today_nonzero = re.search(
-        r"(?:今天|today|due today|total today|应付)[^$\d\n]{0,20}(?:US\$|HK\$|\$|￥|¥|€|£)\s*(?:[1-9]\d*(?:[.,]\d{2})?|0\.(?:0[1-9]|[1-9]\d))",
+        r"(?:今天|today|due today|total today|hari ini|tagihan hari ini|应付)[^$\d\n]{0,20}(?:US\$|HK\$|\$|￥|¥|€|£)\s*(?:[1-9]\d*(?:[.,]\d{2})?|0[.,](?:0[1-9]|[1-9]\d))",
         txt, re.IGNORECASE
     ) or re.search(
-        r"(?:US\$|HK\$|\$|￥|¥|€|£)\s*(?:[1-9]\d*(?:[.,]\d{2})?|0\.(?:0[1-9]|[1-9]\d))\s*(?:今天|today|due today)",
+        r"(?:US\$|HK\$|\$|￥|¥|€|£)\s*(?:[1-9]\d*(?:[.,]\d{2})?|0[.,](?:0[1-9]|[1-9]\d))\s*(?:今天|today|due today|hari ini)",
         txt, re.IGNORECASE
     )
     if today_nonzero:
         return False, f"Proteksi konsumsi nol dicegah: terdeteksi tagihan hari ini ({today_nonzero.group(0)})"
-    has_exact_zero = bool(re.search(r"(?<![0-9])(?:US\$|HK\$|\$|￥|¥|€|£)\s*0\.00(?!\d)", txt)) or \
-                     bool(re.search(r"(?<!\d)0\.00\s*(?:今天|today|due|需于今天支付)", txt, re.IGNORECASE)) or \
-                     ("免费试用" in txt) or ("Free trial" in txt)
+    has_exact_zero = bool(re.search(r"(?<![0-9])(?:US\$|HK\$|\$|￥|¥|€|£)\s*0[.,]00(?!\d)", txt)) or \
+                     bool(re.search(r"(?<!\d)0[.,]00\s*(?:今天|today|due|hari ini|需于今天支付)", txt, re.IGNORECASE)) or \
+                     ("免费试用" in txt) or ("Free trial" in txt) or ("uji coba gratis" in txt.lower()) or ("gratis" in txt.lower() and ("0,00" in txt or "0.00" in txt))
     if not has_exact_zero:
         return False, f"Proteksi konsumsi nol dicegah: tidak terdeteksi harga US$0.00 / Free trial ({txt[:160]})"
     return True, ""
@@ -1569,13 +1569,13 @@ class GoogleUltraAutomator:
         if "2028" in play_txt:
             self.log("✅ Mendeteksi akun ini sudah memasuki masa gratis 2028, otomatis melewatkan Langkah 2！")
             return
-        if any(k in play_txt for k in ("2027年10月", "2027年11月", "2027年12月", "Oct 2027", "Nov 2027", "Dec 2027")):
-            if "重新订阅" in play_txt:
+        if any(k in play_txt for k in ("2027年10月", "2027年11月", "2027年12月", "Oct 2027", "Nov 2027", "Dec 2027", "Okt 2027", "Des 2027", "Oktober 2027", "November 2027", "Desember 2027")):
+            if any(k in play_txt for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe")):
                 await self.ensure_subscription_active(page)
             self.log("✅ Mendeteksi akun ini sudah menyelesaikan tumpukan layer pertama 12 bulan gratis, otomatis melewatkan Langkah 2！")
             return
 
-        if "重新订阅" in play_txt:
+        if any(k in play_txt for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe")):
             await self.ensure_subscription_active(page)
 
         sub_id = None
@@ -1605,13 +1605,13 @@ class GoogleUltraAutomator:
         self.log("=== Langkah 3/5: Menjalankan Layer 2 Paket Gratis 6 Bulan (S25 Pro 6B + Uji Coba YT 1B, US$0.00) Tumpukan Diperpanjang ===")
 
         play_txt = await self.inspect_play_subscriptions(page)
-        if any(k in play_txt for k in ("2028年4月", "2028年5月", "2028年6月", "2028年10月", "2028年11月", "2028年12月", "Apr 2028", "May 2028", "Oct 2028", "Nov 2028", "Dec 2028")):
-            if "重新订阅" in play_txt and not any(k in play_txt for k in ("2028年10月", "2028年11月", "2028年12月", "Oct 2028", "Nov 2028", "Dec 2028")):
+        if any(k in play_txt for k in ("2028年4月", "2028年5月", "2028年6月", "2028年10月", "2028年11月", "2028年12月", "Apr 2028", "May 2028", "Mei 2028", "Jun 2028", "Oct 2028", "Okt 2028", "Nov 2028", "Dec 2028", "Des 2028")):
+            if any(k in play_txt for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe")) and not any(k in play_txt for k in ("2028年10月", "2028年11月", "2028年12月", "Oct 2028", "Okt 2028", "Nov 2028", "Dec 2028", "Des 2028")):
                 await self.ensure_subscription_active(page)
             self.log("✅ Mendeteksi akun ini sudah mencapai tahun 2028 (≥18 bulan), otomatis melewatkan Langkah 3！")
             return
 
-        if "重新订阅" in play_txt:
+        if any(k in play_txt for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe")):
             await self.ensure_subscription_active(page)
 
         sub_id = await self.get_current_sub_id(page)
@@ -1639,11 +1639,11 @@ class GoogleUltraAutomator:
         self.log("=== Langkah 4/5: Menjalankan Layer 3 Paket Gratis 6 Bulan Puncak (Pixel 6B + Uji Coba YT 1B, US$0.00 -> 24 bulan) ===")
 
         play_txt = await self.inspect_play_subscriptions(page)
-        if any(k in play_txt for k in ("2028年10月", "2028年11月", "2028年12月", "Oct 2028", "Nov 2028", "Dec 2028")):
+        if any(k in play_txt for k in ("2028年10月", "2028年11月", "2028年12月", "Oct 2028", "Okt 2028", "Nov 2028", "Dec 2028", "Des 2028")):
             self.log("✅ Mendeteksi akun ini sudah menumpuk penuh masa gratis 24 bulan (Oktober-Desember 2028), otomatis melewatkan Langkah 4！")
             return
 
-        if "重新订阅" in play_txt:
+        if any(k in play_txt for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe")):
             await self.ensure_subscription_active(page)
 
         sub_id = await self.get_current_sub_id(page)
@@ -1681,7 +1681,7 @@ class GoogleUltraAutomator:
         await asyncio.sleep(4)
         play_txt = await page.inner_text("body")
 
-        if self.auto_cancel and "取消日期" not in play_txt and "重新订阅" not in play_txt and "已取消" not in play_txt:
+        if self.auto_cancel and not any(k in play_txt for k in ("取消日期", "Tanggal pembatalan", "Dibatalkan pada", "重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe", "已取消", "Dibatalkan")):
             mbtn = page.locator('text=/^管理$|^Manage$|^Kelola$/i')
             for i in range(await mbtn.count()):
                 if await mbtn.nth(i).is_visible():
@@ -1758,7 +1758,7 @@ class GoogleUltraAutomator:
         self.log(f"Status halaman langganan Play akhir: {final_txt[:400]}")
 
         # Parse expiry date from final_txt
-        m_date = re.search(r"(?:取消日期[：:]\s*|续订日期[：:]\s*|将于\s*)([0-9]{4}年[0-9]{1,2}月[0-9]{1,2}日)", final_txt)
+        m_date = re.search(r"(?:取消日期[：:]\s*|续订日期[：:]\s*|将于\s*|Tanggal pembatalan[：:]\s*|Dibatalkan pada\s*|Berakhir pada\s*)([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4}|[0-9]{4}[年/-][0-9]{1,2}[月/-][0-9]{1,2}(?:日)?)", final_txt)
         exp_str = m_date.group(1) if m_date else "Sudah Aktif (lihat screenshot)"
         plan_found = "Google AI Pro (5 TB)" if "5 TB" in final_txt else ("Google AI Ultra (20 TB)" if "20 TB" in final_txt else ("Google AI Ultra (30 TB)" if "30 TB" in final_txt else "Google AI Pro"))
 
