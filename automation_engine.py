@@ -1616,19 +1616,25 @@ class GoogleUltraAutomator:
 
         sub_id = await self.get_current_sub_id(page)
 
-        cfg_l2 = {
-            "name": "Step3_Layer2_6MSS_YTFree_ZeroCost",
-            "full_items": [
-                [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_6M_SS]],
-                [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
-            ],
-            "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
-        }
-        ok = await self.open_and_click_subscribe(page, cfg_l2, "step3_layer2_6mss")
-        if not ok:
-            self.log("⚠️ Langkah 3 pemicuan pertama tidak menyelesaikan checkout, menunggu 3 detik lalu mencoba lagi (2/2)...")
-            await asyncio.sleep(3.0)
-            ok = await self.open_and_click_subscribe(page, cfg_l2, "step3_layer2_6mss")
+        ok = False
+        combos_l2 = [
+            ("step3_layer2_6mss_noyt", False),
+            ("step3_layer2_6mss", True),
+        ]
+        for tag, with_yt in combos_l2:
+            items = [[[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_6M_SS]]]
+            if with_yt:
+                items.append([[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]])
+            cfg_l2 = {
+                "name": tag,
+                "full_items": items,
+                "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
+            }
+            ok = await self.open_and_click_subscribe(page, cfg_l2, tag)
+            if ok:
+                break
+            await asyncio.sleep(2.5)
+
         if not ok:
             raise RuntimeError(f"Langkah 3 (layer 2 gratis 6 bulan US$0.00) tidak berhasil: {self.last_subscribe_error}")
         self.log("✅ Langkah 3 (paket gratis 6 bulan layer kedua US$0.00 -> 18 bulan) tumpukan selesai! menunggu 45 detik untuk menyinkronkan ID langganan...")
@@ -1649,19 +1655,25 @@ class GoogleUltraAutomator:
         sub_id = await self.get_current_sub_id(page)
 
         ok = False
-        for tag, tok in [("step4_layer3_6m", TOK_PRO5TB_6M), ("step4_layer3_6m2", TOK_PRO5TB_6M_2)]:
+        combos_l3 = [
+            ("step4_layer3_6m_noyt", TOK_PRO5TB_6M, False),
+            ("step4_layer3_6m2_noyt", TOK_PRO5TB_6M_2, False),
+            ("step4_layer3_6m", TOK_PRO5TB_6M, True),
+            ("step4_layer3_6m2", TOK_PRO5TB_6M_2, True),
+        ]
+        for tag, tok, with_yt in combos_l3:
+            items = [[[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [tok]]]
+            if with_yt:
+                items.append([[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]])
             cfg_l3 = {
                 "name": tag,
-                "full_items": [
-                    [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [tok]],
-                    [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
-                ],
+                "full_items": items,
                 "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
             }
             ok = await self.open_and_click_subscribe(page, cfg_l3, tag)
             if ok:
                 break
-            await asyncio.sleep(3.0)
+            await asyncio.sleep(2.5)
 
         if not ok:
             raise RuntimeError(f"Langkah 4 (layer 3 gratis 6 bulan puncak US$0.00) tidak berhasil: {self.last_subscribe_error}")
