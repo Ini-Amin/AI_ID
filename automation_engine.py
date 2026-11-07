@@ -1163,13 +1163,30 @@ class GoogleUltraAutomator:
                 self.log(f"[{step_tag or 'modal'}] Mendeteksi pengalihan ke halaman verifikasi masuk ({page.url[:60]}), sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
                 return None, ""
+            # 1. Cek apakah di halaman utama muncul modal dialog Error "Terjadi error. Harap coba lagi."
+            try:
+                err_dlg = page.locator('div[role="dialog"]')
+                if await err_dlg.count() > 0 and await err_dlg.first.is_visible():
+                    dlg_txt = (await err_dlg.first.inner_text()).strip()
+                    if any(k in dlg_txt for k in ("Terjadi error", "Harap coba lagi", "Error", "Something went wrong", "出了点问题")):
+                        ok_btn = err_dlg.first.locator('button:has-text("Mengerti"), button:has-text("OK"), button:has-text("知道了"), button:has-text("Got it")').first
+                        if await ok_btn.count() > 0:
+                            self.log(f"[{step_tag or 'modal'}] Mendeteksi dialog error Google One ('Terjadi error. Harap coba lagi'), otomatis menutup modal via [Mengerti]...")
+                            try:
+                                await ok_btn.click(force=True)
+                            except Exception:
+                                pass
+                            await asyncio.sleep(2.0)
+                            return None, "MAIN_PAGE_ERROR_RETRY"
+            except Exception:
+                pass
+
             frames_to_check = []
             try:
                 for p in page.context.pages:
                     frames_to_check.extend(p.frames)
             except Exception:
                 frames_to_check = page.frames
-
             for fr in frames_to_check:
                 fr_url = fr.url or ""
                 if "eacquire" in fr_url:
@@ -1358,7 +1375,15 @@ class GoogleUltraAutomator:
                     await page.reload(wait_until="domcontentloaded")
                 except Exception:
                     pass
-            await asyncio.sleep(4.0)  # Jeda stabil 3-5 detik agar skrip Google & RPC terinisialisasi penuh
+            await asyncio.sleep(5.5)  # Jeda stabil 5.5 detik agar skrip Google & RPC batchexecute terinisialisasi penuh
+            # Bersihkan dialog error lama jika ada
+            try:
+                old_dlg = page.locator('div[role="dialog"] button:has-text("Mengerti"), div[role="dialog"] button:has-text("OK")').first
+                if await old_dlg.count() > 0 and await old_dlg.is_visible():
+                    await old_dlg.click(force=True)
+                    await asyncio.sleep(1.5)
+            except Exception:
+                pass
             if "accounts.google.com" in page.url or "gds.google.com" in page.url:
                 self.log(f"[{step_tag}] Halaman memicu verifikasi masuk, sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
@@ -1416,6 +1441,10 @@ class GoogleUltraAutomator:
 
             if fb_btn:
                 target_fr, clean_txt = await self._poll_eacquire_modal(page, max_loops=60, step_tag=step_tag)
+                if clean_txt == "MAIN_PAGE_ERROR_RETRY":
+                    self.log(f"[{step_tag}] RPC Google One belum selesai dimuat saat tombol diklik. Menunggu 4 detik untuk stabilisasi, lalu mencoba lagi...")
+                    await asyncio.sleep(4.0)
+                    continue
                 if clean_txt == "INLINE_CARD_SAVED_RETRY":
                     self.log(f"[{step_tag}] Ikatan kartu inline sudah selesai, sedang membuka ulang halaman skema untuk memicu popup checkout 0 yuan...")
                     continue
