@@ -163,7 +163,10 @@ async def get_state():
         except Exception:
             item["totp_now"] = "------"
         item["totp_rem"] = rem_sec
+        task = ACTIVE_TASKS.get(acc["id"])
         item["is_running"] = acc["id"] in ACTIVE_TASKS
+        item["is_paused"] = bool(task and getattr(task, "is_paused", False))
+        item["waiting_human"] = bool(task and getattr(task, "waiting_human", False))
         accounts_out.append(item)
 
     raw_card = cfg.get("card", {})
@@ -480,6 +483,25 @@ async def stop_all(req: Optional[AccountActionReq] = None):
             task.stop_requested = True
         append_log(f"[{time.strftime('%H:%M:%S')}] [STOP] ⏹ Perintah penghentian global telah dikirim")
     return {"ok": True}
+@app.post("/api/accounts/takeover")
+async def takeover_account(req: AccountActionReq):
+    task = ACTIVE_TASKS.get(req.account_id)
+    if not task:
+        raise HTTPException(status_code=400, detail="Akun tidak sedang berjalan")
+    task.pause("Kontrol diambil alih manual oleh pengguna")
+    append_log(f"[{time.strftime('%H:%M:%S')}] [TAKEOVER] 🖐️ Pengguna mengambil alih kontrol manual untuk {req.account_id}")
+    return {"ok": True}
+
+
+@app.post("/api/accounts/resume")
+async def resume_account(req: AccountActionReq):
+    task = ACTIVE_TASKS.get(req.account_id)
+    if not task:
+        raise HTTPException(status_code=400, detail="Akun tidak sedang berjalan")
+    task.resume()
+    append_log(f"[{time.strftime('%H:%M:%S')}] [RESUME] ▶ Melanjutkan otomatisasi untuk {req.account_id}")
+    return {"ok": True}
+
 
 
 MANUAL_BRIDGES: Dict[str, LocalHttpProxyAuthBridge] = {}
@@ -501,8 +523,11 @@ async def open_browser_manual(req: AccountActionReq):
     target_acc = next((a for a in cfg.get("accounts", []) if a["id"] == req.account_id), None)
     if not target_acc:
         raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
-
     user_data_dir = get_profile_dir(target_acc["id"], target_acc["email"])
+    if req.account_id in ACTIVE_TASKS:
+        append_log(f"[{time.strftime('%H:%M:%S')}] [BROWSER] 🌐 Jendela Chrome [{target_acc['id']}] sudah berjalan. Membawa jendela ke depan...")
+        _launch_on_interactive_desktop([CHROME_PATH, f"--user-data-dir={user_data_dir}", "https://one.google.com/plans?hl=id"])
+        return {"ok": True}
     target_region = cfg.get("target_region", "US")
     proxy_template = cfg.get("proxy_template", "")
     resolved_proxy = resolve_account_proxy(target_acc, target_region, proxy_template)

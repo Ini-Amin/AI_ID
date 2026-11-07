@@ -629,9 +629,9 @@
       const map = {
         pending: ['status-pending', '⏳ Belum Dijalankan'],
         running: ['status-running', '⚡ Sedang Dijalankan'],
-        waiting_human: ['status-waiting_human', '🖐️ Menunggu Anda Klik Verifikasi Manusia'],
+        waiting_human: ['status-waiting_human', '🖐️ Menunggu Anda di Chrome'],
         completed: ['status-completed', '✅ Selesai'],
-        error: ['status-error', '❌ Terhenti Tidak Terduga'],
+        error: ['status-error', '❌ Terhenti / Error'],
         stopped: ['status-pending', '⏹ Berhenti']
       };
       const [cls, label] = map[status] || ['status-pending', status];
@@ -671,9 +671,9 @@
             <td>
               <div style="font-weight:600; color:#f1f5f9;">${acc.email}</div>
               <div style="font-size:11.5px; color:var(--muted); font-family:Consolas,monospace;">
-                密码: ${acc.password}
+                Password: ${acc.password}
                 ${acc.recovery_email ? `<br/>Pemulihan: ${acc.recovery_email}` : ''}
-                ${acc.ip_info ? `<span style="margin-left:6px; color:#38bdf8;">[${acc.ip_info}]</span>` : (acc.proxy ? `<span style="margin-left:6px; color:#a78bfa;">[独立代理]</span>` : '')}
+                ${acc.ip_info ? `<span style="margin-left:6px; color:#38bdf8;">[${acc.ip_info}]</span>` : (acc.proxy ? `<span style="margin-left:6px; color:#a78bfa;">[Proxy Khusus]</span>` : '')}
               </div>
             </td>
             <td>${totpHtml}</td>
@@ -700,6 +700,27 @@
                   <option value="4" ${savedStart === 4 ? 'selected' : ''}>Dari Langkah 4 layer ketiga puncak($0)</option>
                   <option value="5" ${savedStart === 5 ? 'selected' : ''}>Dari Langkah 5 kunci deregistrasi</option>
                 </select>
+                ${(acc.is_running) ? (
+                  (acc.status === 'waiting_human' || acc.waiting_human || acc.is_paused) ? `
+                    <button
+                      class="btn-sm btn-success"
+                      style="background:#059669; animation:pulse 1.2s infinite; font-weight:bold;"
+                      onclick="resumeSingle('${acc.id}')"
+                      title="Lanjutkan otomatisasi setelah Anda selesai melakukan tindakan manual di Chrome"
+                    >
+                      ▶ Lanjutkan
+                    </button>
+                  ` : `
+                    <button
+                      class="btn-sm btn-secondary"
+                      style="border-color:#f59e0b; color:#fbbf24; font-weight:600;"
+                      onclick="takeoverSingle('${acc.id}')"
+                      title="Ambil alih manual: Jeda otomatisasi sekarang agar Anda bisa mengklik/mengisi sendiri di Chrome tanpa gangguan"
+                    >
+                      🖐️ Ambil Alih
+                    </button>
+                  `
+                ) : ''}
                 <button
                   class="btn-sm ${acc.is_running ? 'btn-danger' : 'btn-success'}"
                   onclick="${acc.is_running ? `stopSingle('${acc.id}')` : `runSingle('${acc.id}')`}"
@@ -709,9 +730,9 @@
                 <button
                   class="btn-sm ${openedBrowserMap[acc.id] ? 'btn-success' : 'btn-secondary'}"
                   onclick="openBrowser('${acc.id}')"
-                  title="Buka jendela Chrome independen untuk akun ini secara manual"
+                  title="${acc.is_running ? 'Fokus ke jendela Chrome yang sedang berjalan' : 'Buka jendela Chrome independen untuk akun ini secara manual'}"
                 >
-                  ${openedBrowserMap[acc.id] ? '✅ Sudah Dibuka' : '🌐 Browser'}
+                  ${acc.is_running ? '🌐 Fokus Chrome' : (openedBrowserMap[acc.id] ? '✅ Sudah Dibuka' : '🌐 Browser')}
                 </button>
                 <button class="btn-sm btn-secondary" onclick="resetAccount('${acc.id}')" title="Setel ulang Status menjadi Belum Dijalankan">
                   🔄
@@ -890,6 +911,24 @@
       });
       fetchState();
     }
+    async function takeoverSingle(accountId) {
+      await fetch('/api/accounts/takeover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: accountId })
+      });
+      fetchState();
+    }
+
+    async function resumeSingle(accountId) {
+      await fetch('/api/accounts/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: accountId })
+      });
+      fetchState();
+    }
+
 
     async function stopAll() {
       await fetch('/api/stop', { method: 'POST' });

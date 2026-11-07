@@ -590,8 +590,75 @@ class GoogleUltraAutomator:
         self.on_log = on_log or (lambda msg: print(msg))
         self.on_state = on_state or (lambda st: None)
         self.stop_requested = False
+        self.is_paused = False
+        self.waiting_human = False
+        self.resume_event = asyncio.Event()
         self.proc: Optional[subprocess.Popen] = None
         self.proxy_bridge: Optional[LocalHttpProxyAuthBridge] = None
+
+    def pause(self, reason: str = "Kontrol diambil alih manual oleh pengguna"):
+        self.is_paused = True
+        self.waiting_human = True
+        self.resume_event.clear()
+        self.update_state(
+            status="waiting_human",
+            step_message=f"🖐️ {reason}. Silakan selesaikan di jendela Chrome, lalu klik [▶ Lanjutkan]."
+        )
+        self.log(f"🖐️ {reason}. Otomatisasi dijeda sementara!")
+
+    def resume(self):
+        self.is_paused = False
+        self.waiting_human = False
+        self.resume_event.set()
+        self.update_state(
+            status="running",
+            step_message="⚡ Melanjutkan otomatisasi..."
+        )
+        self.log("▶ Melanjutkan otomatisasi...")
+
+    async def wait_if_paused(self, page=None):
+        """Jeda eksekusi jika pengguna meminta ambil alih manual."""
+        while self.is_paused:
+            self.check_stop()
+            await asyncio.sleep(0.8)
+
+    async def wait_for_human(self, page, reason: str, timeout: int = 300, success_checker=None):
+        """
+        Jeda otomatisasi untuk intervensi manusia (scan QR, verifikasi HP, CAPTCHA, tindakan manual).
+        Halaman TIDAK AKAN di-reload dan proxy TIDAK AKAN dirotasi selama menunggu.
+        """
+        self.waiting_human = True
+        self.resume_event.clear()
+        self.update_state(
+            status="waiting_human",
+            step_message=f"🖐️ {reason}"
+        )
+        self.log(f"🖐️ {reason} (Otomatisasi dijeda, halaman TIDAK akan di-reload agar QR/sesi tetap aktif. Silakan selesaikan di Chrome atau klik [▶ Lanjutkan]).")
+
+        start_wait = time.time()
+        try:
+            while time.time() - start_wait < timeout:
+                self.check_stop()
+                if self.resume_event.is_set():
+                    self.log("▶ Menerima instruksi lanjut manual dari pengguna!")
+                    break
+                if page and not page.is_closed():
+                    if success_checker:
+                        try:
+                            if await success_checker(page):
+                                self.log("✅ Berhasil mendeteksi verifikasi selesai! Melanjutkan...")
+                                break
+                        except Exception:
+                            pass
+                    cur_url = page.url or ""
+                    if "one.google.com" in cur_url and "accounts.google.com" not in cur_url and "gds.google.com" not in cur_url:
+                        self.log("✅ Berhasil masuk ke Google One! Melanjutkan...")
+                        break
+                await asyncio.sleep(1.5)
+        finally:
+            self.waiting_human = False
+            self.resume_event.clear()
+            self.update_state(status="running")
 
     def log(self, msg: str):
         ts = time.strftime("%H:%M:%S")
@@ -674,8 +741,9 @@ class GoogleUltraAutomator:
         """Automatically handle Google email + password + 2FA TOTP re-authentication prompts."""
         email = self.account.get("email", "")
         password = self.account.get("password", "")
-        for _ in range(16):
+        for _ in range(25):
             self.check_stop()
+            await self.wait_if_paused(page_obj)
             if page_obj.is_closed():
                 return
             try:
@@ -772,10 +840,17 @@ class GoogleUltraAutomator:
                             if await cb.count() > 0:
                                 self.log("Mendeteksi kotak verifikasi manusia masuk (challenge/recaptcha), sedang mencentang secara otomatis...")
                                 await cb.click()
-                                await asyncio.sleep(4.5)
+                                await asyncio.sleep(4.0)
                                 break
                         except Exception:
                             pass
+                # Periksa apakah tantangan CAPTCHA masih ada (misal gambar tile)
+                b_chk = ""
+                try: b_chk = await page_obj.inner_text("body", timeout=1500)
+                except Exception: pass
+                if "challenge/recaptcha" in page_obj.url or "证明您不是自动程序" in b_chk or "not a robot" in b_chk:
+                    await self.wait_for_human(page_obj, reason="Selesaikan verifikasi CAPTCHA di jendela Chrome...", timeout=180,
+                        success_checker=lambda p: "challenge/recaptcha" not in (p.url or ""))
                 continue
 
             # Check if an open dialog modal (VfPpkd-Sx9Kwc-OWXEXe-FNFY6c) is shown on top of the page
@@ -800,18 +875,36 @@ class GoogleUltraAutomator:
                         await opt.click(force=True)
                         await asyncio.sleep(3.5)
                         continue
-            elif ("challenge/dp" in page_obj.url or "challenge/az" in page_obj.url or "challenge/pk" in page_obj.url or "扫描二维码" in body) and "challenge/totp" not in page_obj.url:
+            # Periksa apakah ada tantangan interaktif (Scan QR code / Prompt HP / Kunci Keamanan / Passkey):
+            is_qr_or_device_challenge = (
+                any(k in page_obj.url for k in (
+                    "challenge/dp", "challenge/az", "challenge/pk", "challenge/qra", 
+                    "challenge/sk", "challenge/ipp", "challenge/selection", "challenge/bc"
+                )) or
+                any(k in body.lower() for k in (
+                    "pindai kode qr", "scan the qr code", "scan qr code", "scan qr", "kode qr", "qr code", "扫描二维码",
+                    "buka aplikasi kamera", "open the camera app", "use your phone's camera", "camera app",
+                    "ketuk ya", "tap yes", "periksa ponsel anda", "check your phone", "buka gmail", "open gmail",
+                    "buka aplikasi youtube", "open the youtube app", "buka aplikasi google", "open the google app",
+                    "kunci sandi", "passkey", "security key"
+                ))
+            )
+            if is_qr_or_device_challenge and "challenge/totp" not in page_obj.url and "challenge/pwd" not in page_obj.url:
                 totp_vis = page_obj.locator('input[type="tel"], input#totpPin, input[name="totpPin"]')
-                if await totp_vis.count() == 0 or not await totp_vis.first.is_visible():
-                    try_other = page_obj.locator("text=/试试其他方式|尝试其他方式|Try another way/i").first
-                    if await try_other.count() > 0 and await try_other.is_visible():
-                        self.log("Mendeteksi metode verifikasi lain (QR/Prompt/Kunci Keamanan), mengklik [Coba cara lain] beralih ke kode 2FA...")
-                        try:
-                            await try_other.click(timeout=4000)
-                        except Exception:
-                            pass
-                        await asyncio.sleep(3.5)
-                        continue
+                kpe_vis = page_obj.locator('input#knowledge-preregistered-email-response:visible, input[name="knowledgePreregisteredEmailResponse"]:visible')
+                if (await totp_vis.count() == 0 or not await totp_vis.first.is_visible()) and (await kpe_vis.count() == 0):
+                    # JANGAN klik "Coba cara lain" yang membatalkan QR Code!
+                    # Jeda dan tunggu pengguna melakukan scan QR / ketuk Ya di ponsel
+                    await self.wait_for_human(
+                        page_obj,
+                        reason="Silakan pindai QR Code atau ketuk Ya di ponsel Anda pada jendela Chrome...",
+                        timeout=300,
+                        success_checker=lambda p: (
+                            ("one.google.com" in (p.url or "") and "accounts.google.com" not in (p.url or "")) or
+                            ("challenge" not in (p.url or "") and "accounts.google.com" in (p.url or ""))
+                        )
+                    )
+                    continue
 
             if "确认您的辅助邮箱" in body or "Confirm your recovery email" in body:
                 rec_email = (self.account.get("recovery_email") or "").strip()
@@ -849,6 +942,14 @@ class GoogleUltraAutomator:
                         return
                     await asyncio.sleep(5)
                     continue
+                else:
+                    await self.wait_for_human(
+                        page_obj,
+                        reason="Masukkan kode 2FA Google Authenticator secara manual di Chrome...",
+                        timeout=180,
+                        success_checker=lambda p: "challenge/totp" not in (p.url or "")
+                    )
+                    continue
 
             if "accounts.google.com" in page_obj.url or "gds.google.com" in page_obj.url or page_obj.url == "about:blank":
                 await asyncio.sleep(2)
@@ -864,13 +965,14 @@ class GoogleUltraAutomator:
 
         await self.safe_goto(
             page,
-            "https://accounts.google.com/ServiceLogin?hl=id&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Dzh-CN",
+            "https://accounts.google.com/ServiceLogin?hl=id&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Did",
             timeout=40000,
         )
         await asyncio.sleep(3.5)
         await self.save_screenshot(page, "step1_init")
 
         for login_round in range(3):
+            await self.wait_if_paused(page)
             if "one.google.com" in page.url and "accounts.google.com" not in page.url and "gds.google.com" not in page.url:
                 break
             try:
@@ -940,16 +1042,47 @@ class GoogleUltraAutomator:
                 else:
                     break
 
-            if "signin/identifier" in page.url or "ServiceLogin" in page.url:
-                if self.proxy_bridge:
-                    self.proxy_bridge.rotate_session()
-                self.log("⚠️ Halaman login merespons lambat, sedang mengulang proses pengiriman login...")
-                await self.safe_goto(
-                    page,
-                    "https://accounts.google.com/ServiceLogin?hl=id&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Dzh-CN",
-                    timeout=40000,
-                )
-                await asyncio.sleep(3.5)
+            if "one.google.com" in page.url and "accounts.google.com" not in page.url and "gds.google.com" not in page.url:
+                break
+
+            # Jangan reload jika halaman sedang di challenge atau form login aktif!
+            is_challenge = any(k in page.url for k in ("challenge", "signin/v2/challenge"))
+            pwd_visible = False
+            try:
+                pwd_visible = (await page.locator('input[type="password"], input[name="Passwd"]').count()) > 0
+            except Exception:
+                pass
+
+            if not is_challenge and not pwd_visible and ("signin/identifier" in page.url or "ServiceLogin" in page.url):
+                try:
+                    email_inp = page.locator('input#identifierId, input[name="identifier"]').first
+                    val = (await email_inp.input_value()) if await email_inp.count() > 0 else ""
+                except Exception:
+                    val = ""
+                if not val and login_round < 2:
+                    if self.proxy_bridge:
+                        self.proxy_bridge.rotate_session()
+                    self.log("⚠️ Halaman login merespons lambat, sedang mengulang proses pengiriman login...")
+                    await self.safe_goto(
+                        page,
+                        "https://accounts.google.com/ServiceLogin?hl=id&continue=https%3A%2F%2Fone.google.com%2Fplans%3Fhl%3Did",
+                        timeout=40000,
+                    )
+                    await asyncio.sleep(3.5)
+
+        # Jika belum masuk one.google.com, tunggu proses redirect atau intervensi pengguna
+        for _ in range(12):
+            if "one.google.com" in page.url and "accounts.google.com" not in page.url:
+                break
+            await asyncio.sleep(1.0)
+
+        if "one.google.com" not in page.url or "accounts.google.com" in page.url:
+            await self.wait_for_human(
+                page,
+                reason="Login belum selesai atau membutuhkan tindakan manual di Chrome. Silakan selesaikan di jendela browser...",
+                timeout=300,
+                success_checker=lambda p: "one.google.com" in (p.url or "") and "accounts.google.com" not in (p.url or "")
+            )
 
         await self.save_screenshot(page, "step1_done")
         self.log(f"✅ Langkah 1 selesai, halaman saat ini: {page.url[:80]}")
@@ -1025,6 +1158,7 @@ class GoogleUltraAutomator:
         while loops_left > 0:
             loops_left -= 1
             self.check_stop()
+            await self.wait_if_paused(page)
             if "accounts.google.com" in page.url or "gds.google.com" in page.url:
                 self.log(f"[{step_tag or 'modal'}] Mendeteksi pengalihan ke halaman verifikasi masuk ({page.url[:60]}), sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
@@ -1214,6 +1348,7 @@ class GoogleUltraAutomator:
 
         # Primary trigger: one.google.com/plans?hl=id clicking the LAST action button (proven 100% reliable across L1, L2, L3)
         for attempt_i, attempt_url in enumerate(("https://one.google.com/plans?hl=id",) * 5):
+            await self.wait_if_paused(page)
             if target_fr:
                 break
             self.log(f"[{step_tag}] Sedang membuka halaman skema untuk memicu popup checkout Ngbm: {attempt_url} (Percobaan {attempt_i + 1}/5)")
@@ -1932,8 +2067,11 @@ class GoogleUltraAutomator:
             err_msg = str(e)
             self.log(f"❌ Eksekusi terputus: {err_msg}")
             self.update_state(status="error", step_message=f"❌ Langkah {self.account.get('current_step', 1)} Anomali: {err_msg[:120]}")
+            if not self.stop_requested:
+                self.log("ℹ️ Jendela Chrome dibiarkan terbuka agar Anda dapat memeriksa atau mengambil alih secara manual. Klik [⏹ Hentikan] jika ingin menutupnya.")
         finally:
-            if self.proxy_bridge:
-                await self.proxy_bridge.stop()
-            if self.proc:
-                kill_pid(self.proc.pid)
+            if self.stop_requested:
+                if self.proxy_bridge:
+                    await self.proxy_bridge.stop()
+                if self.proc:
+                    kill_pid(self.proc.pid)
