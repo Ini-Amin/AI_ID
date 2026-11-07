@@ -1163,7 +1163,7 @@ class GoogleUltraAutomator:
                 self.log(f"[{step_tag or 'modal'}] Mendeteksi pengalihan ke halaman verifikasi masuk ({page.url[:60]}), sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
                 return None, ""
-            # 1. Cek apakah di halaman utama muncul modal dialog Error "Terjadi error. Harap coba lagi."
+            # 1. Cek apakah di halaman utama muncul modal dialog Error atau toast "Tidak dapat menyelesaikan checkout"
             try:
                 err_dlg = page.locator('div[role="dialog"]')
                 if await err_dlg.count() > 0 and await err_dlg.first.is_visible():
@@ -1181,6 +1181,20 @@ class GoogleUltraAutomator:
             except Exception:
                 pass
 
+            try:
+                toast = page.locator('text=/Tidak dapat menyelesaikan checkout saat ini|Can\'t complete checkout right now|无法完成结账/i')
+                if await toast.count() > 0 and await toast.first.is_visible():
+                    self.log(f"[{step_tag or 'modal'}] Mendeteksi toast error Google One ('Tidak dapat menyelesaikan checkout saat ini')...")
+                    ok_btn = page.locator('div[role="dialog"] button:has-text("Mengerti"), div[role="dialog"] button:has-text("OK")').first
+                    if await ok_btn.count() > 0:
+                        try:
+                            await ok_btn.click(force=True)
+                        except Exception:
+                            pass
+                    await asyncio.sleep(2.0)
+                    return None, "MAIN_PAGE_ERROR_RETRY"
+            except Exception:
+                pass
             frames_to_check = []
             try:
                 for p in page.context.pages:
@@ -1393,24 +1407,41 @@ class GoogleUltraAutomator:
             await page.evaluate(HOOK_JS)
             await page.evaluate(f"if (typeof window.__setDirectTest === 'function') window.__setDirectTest({json.dumps(cfg)}); else window.__INIT_TEST = {json.dumps(cfg)};")
 
+            is_stacking = bool("step3" in step_tag.lower() or "step4" in step_tag.lower() or "layer2" in step_tag.lower() or "layer3" in step_tag.lower())
             fb_btn = None
             for _ in range(10):
                 await asyncio.sleep(1.2)
                 await page.evaluate(HOOK_JS)
                 await page.evaluate(f"if (typeof window.__setDirectTest === 'function') window.__setDirectTest({json.dumps(cfg)}); else window.__INIT_TEST = {json.dumps(cfg)};")
                 fb_btn = await page.evaluate(
-                    """() => {
+                    f"""() => {{
                     // Tutup modal error lama jika ada
                     const errBtns = Array.from(document.querySelectorAll('div[role="dialog"] button, [role="dialog"] [role="button"]'));
-                    for (const eb of errBtns) {
+                    for (const eb of errBtns) {{
                         const ebt = (eb.innerText || '').trim();
-                        if (ebt === 'Mengerti' || ebt === 'OK' || ebt === '知道了' || ebt === 'Got it') {
+                        if (ebt === 'Mengerti' || ebt === 'OK' || ebt === '知道了' || ebt === 'Got it') {{
                             eb.click();
                             break;
-                        }
-                    }
+                        }}
+                    }}
+
+                    // Khusus Langkah 3 & Langkah 4 (tumpukan 18M & 24M): Google One mewajibkan beralih ke opsi TAHUNAN agar Mode 5 Stacking aktif
+                    if ({json.dumps(is_stacking)}) {{
+                        const tabs = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"], span, a'));
+                        const annualTab = tabs.find(el => {{
+                            const t = (el.innerText || '').trim();
+                            const r = el.getBoundingClientRect();
+                            return r.width > 20 && r.height > 15 && (
+                                t === 'Tahunan' || t === '年付' || t === 'Annual' || t === 'Yearly' || t === 'Beralih' || t.includes('Beralih ke tahunan')
+                            );
+                        }});
+                        if (annualTab) {{
+                            annualTab.click();
+                        }}
+                    }}
+
                     const els = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-                    const btns = els.filter(e => {
+                    const btns = els.filter(e => {{
                         const t = (e.innerText || '').trim();
                         const r = e.getBoundingClientRect();
                         return r.width > 15 && r.height > 15 && r.left >= 240 && (
@@ -1420,20 +1451,22 @@ class GoogleUltraAutomator:
                             t.includes('换用此方案') ||
                             t === '升级' ||
                             t === 'Upgrade' ||
+                            t.includes('Beralih') ||
+                            t.includes('Switch') ||
                             t.includes('获取 Google AI Ultra') ||
                             t.includes('Get started') ||
                             t.includes('Get offer')
                         );
-                    });
-                    if (btns.length > 0) {
+                    }});
+                    if (btns.length > 0) {{
                         const btn = btns[btns.length - 1];
-                        btn.scrollIntoView({block: 'center'});
+                        btn.scrollIntoView({{block: 'center'}});
                         const r = btn.getBoundingClientRect();
                         btn.click();
-                        return {x: r.left + r.width / 2, y: r.top + r.height / 2, text: (btn.innerText || '').trim()};
-                    }
+                        return {{x: r.left + r.width / 2, y: r.top + r.height / 2, text: (btn.innerText || '').trim()}};
+                    }}
                     return null;
-                }"""
+                }}"""
                 )
                 if fb_btn:
                     self.log(f"[{step_tag}] Sudah mengklik【{fb_btn.get("text", "")}】tombol pemicu, menunggu popup checkout Google Play...")
