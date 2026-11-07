@@ -47,6 +47,16 @@ def _find_chrome_path() -> str:
             return found
     return candidates[0] if candidates else "google-chrome"
 
+def find_free_port(start_port: int = 9520) -> int:
+    for p in range(start_port, start_port + 200):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", p))
+                return p
+            except OSError:
+                continue
+    return start_port
+
 
 def kill_pid(pid: int):
     if not pid:
@@ -556,7 +566,11 @@ class LocalHttpProxyAuthBridge:
                     pass
 
     async def start(self):
-        self.server = await asyncio.start_server(self._handle_client, "127.0.0.1", self.local_port)
+        try:
+            self.server = await asyncio.start_server(self._handle_client, "127.0.0.1", self.local_port)
+        except OSError:
+            self.local_port = find_free_port(self.local_port + 1)
+            self.server = await asyncio.start_server(self._handle_client, "127.0.0.1", self.local_port)
 
     async def stop(self):
         if self.server:
@@ -565,6 +579,7 @@ class LocalHttpProxyAuthBridge:
                 await self.server.wait_closed()
             except Exception:
                 pass
+            self.server = None
 
 
 class GoogleUltraAutomator:
@@ -2117,12 +2132,18 @@ class GoogleUltraAutomator:
 
         if parsed_proxy:
             if parsed_proxy.get("username"):
-                bridge_port = self.port + 200
+                bridge_port = find_free_port(self.port + 200)
+                if self.proxy_bridge:
+                    try:
+                        await self.proxy_bridge.stop()
+                    except Exception:
+                        pass
                 self.proxy_bridge = LocalHttpProxyAuthBridge(bridge_port, parsed_proxy)
                 await self.proxy_bridge.start()
+                bridge_port = self.proxy_bridge.local_port
                 chrome_args.append(f"--proxy-server=http://127.0.0.1:{bridge_port}")
                 self.log(
-                    f"🛡️ Sudah memasang terowongan proksi perumahan khusus untuk [{self.account["id"]}] -> {parsed_proxy["host"]}:{parsed_proxy["port"]} (sesi: {parsed_proxy["username"][:28]}...)"
+                    f"🛡️ Sudah memasang terowongan proksi perumahan khusus untuk [{self.account['id']}] -> {parsed_proxy['host']}:{parsed_proxy['port']} (sesi: {parsed_proxy['username'][:28]}...)"
                 )
             else:
                 p_url = f"{parsed_proxy['scheme']}://{parsed_proxy['host']}:{parsed_proxy['port']}"
@@ -2194,8 +2215,11 @@ class GoogleUltraAutomator:
             if not self.stop_requested:
                 self.log("ℹ️ Jendela Chrome dibiarkan terbuka agar Anda dapat memeriksa atau mengambil alih secara manual. Klik [⏹ Hentikan] jika ingin menutupnya.")
         finally:
-            if self.stop_requested:
-                if self.proxy_bridge:
+            if self.proxy_bridge:
+                try:
                     await self.proxy_bridge.stop()
-                if self.proc:
-                    kill_pid(self.proc.pid)
+                except Exception:
+                    pass
+                self.proxy_bridge = None
+            if self.stop_requested and self.proc:
+                kill_pid(self.proc.pid)

@@ -423,6 +423,10 @@ async def _run_account_worker(account_id: str, start_step: int = 1, port: int = 
     ACTIVE_TASKS[account_id] = automator
     try:
         await automator.run_pipeline(start_step=start_step)
+    except Exception as e:
+        err_text = str(e)
+        append_log(f"[{time.strftime('%H:%M:%S')}] [{account_id}] ❌ Kesalahan eksekusi: {err_text}")
+        on_state_patch({"status": "error", "step_message": f"❌ Gagal: {err_text[:120]}"})
     finally:
         ACTIVE_TASKS.pop(account_id, None)
 
