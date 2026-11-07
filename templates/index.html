@@ -41,12 +41,12 @@
       background: linear-gradient(135deg, #16213e 0%, #0f172a 100%);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 16px 22px;
-      margin-bottom: 18px;
+      padding: 14px 20px;
+      margin-bottom: 14px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     }
     .header-left h1 {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -55,20 +55,38 @@
     }
     .badge-pro {
       background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-      font-size: 12px;
+      font-size: 11.5px;
       padding: 2px 10px;
       border-radius: 999px;
       font-weight: 600;
     }
     .header-left p {
       color: var(--muted);
-      font-size: 12.5px;
-      margin-top: 4px;
+      font-size: 12px;
+      margin-top: 3px;
     }
     .header-actions {
       display: flex;
       align-items: center;
       gap: 10px;
+    }
+    .global-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+      font-weight: 600;
+    }
+    .global-status-pill.running {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.35);
+      color: #60a5fa;
+      animation: pulse 1.5s infinite;
     }
     /* Buttons & Inputs */
     button {
@@ -188,28 +206,76 @@
       height: 16px;
       cursor: pointer;
     }
-    /* Pipeline Steps Legend */
-    .pipeline-bar {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
+    /* Pipeline Connected Stepper Bar */
+    .stepper-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 16px;
+      margin-bottom: 16px;
+      overflow-x: auto;
       gap: 8px;
-      margin-bottom: 18px;
     }
-    .pipe-item {
-      background: #111827;
+    .stepper-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .stepper-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .stepper-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+    .stepper-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 2px;
+    }
+    .stepper-arrow {
+      color: #334155;
+      font-size: 13px;
+      font-weight: bold;
+      user-select: none;
+    }
+    /* Static Badge for Locked Configs */
+    .static-badge-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.7);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 12px;
+      padding: 7px 12px;
     }
-    .pipe-item strong {
+    .badge-flag {
+      font-size: 20px;
+      line-height: 1;
+    }
+    .static-badge-field strong {
+      font-size: 12.5px;
+      color: #f1f5f9;
       display: block;
-      color: #60a5fa;
-      margin-bottom: 2px;
     }
-    .pipe-item span {
+    .badge-sub {
+      font-size: 11px;
       color: var(--muted);
-      font-size: 11.5px;
     }
     /* Accounts Table */
     .table-wrap {
@@ -300,8 +366,8 @@
       margin-bottom: 4px;
     }
     .step-dot {
-      width: 22px;
-      height: 18px;
+      width: 24px;
+      height: 20px;
       border-radius: 4px;
       font-size: 11px;
       font-weight: 700;
@@ -311,6 +377,7 @@
       background: #1e293b;
       color: #64748b;
       border: 1px solid #334155;
+      transition: all 0.15s ease;
     }
     .step-dot.done {
       background: rgba(16, 185, 129, 0.25);
@@ -321,12 +388,198 @@
       background: #2563eb;
       color: #fff;
       border-color: #60a5fa;
+      box-shadow: 0 0 8px rgba(37, 99, 235, 0.5);
+    }
+    .step-dot.clickable {
+      cursor: pointer;
+    }
+    .step-dot.clickable:hover {
+      transform: translateY(-2px);
+      border-color: #60a5fa;
+      color: #fff;
+      background: #1d4ed8;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
     }
     .step-msg {
+      font-size: 11.5px;
+      color: var(--muted);
+      max-width: 280px;
+      word-break: break-all;
+      line-height: 1.35;
+    }
+    /* Table Header Toolbar */
+    .table-header-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .table-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .table-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .summary-badge {
       font-size: 12px;
       color: var(--muted);
-      max-width: 310px;
-      word-break: break-all;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .batch-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.7);
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .batch-label {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .batch-select {
+      padding: 5px 8px;
+      font-size: 12px;
+      background: #0b1120;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #f1f5f9;
+    }
+    /* Action Buttons in Rows */
+    .run-btn-group {
+      position: relative;
+      display: inline-flex;
+      vertical-align: middle;
+    }
+    .run-btn-group > button:first-child {
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    .step-menu-trigger {
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+      border-left: 1px solid rgba(255, 255, 255, 0.25);
+      padding: 5px 8px;
+      font-size: 11px;
+    }
+    .step-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65);
+      padding: 6px;
+      z-index: 100;
+      display: none;
+      min-width: 250px;
+    }
+    .step-dropdown-menu.show {
+      display: block;
+      animation: fadeIn 0.15s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .step-menu-header {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 4px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .step-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: transparent;
+      color: #cbd5e1;
+      font-size: 12px;
+      text-align: left;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.12s;
+    }
+    .step-menu-item:hover {
+      background: #1e293b;
+      color: #fff;
+    }
+    .step-menu-item .step-num {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: #1e293b;
+      color: #60a5fa;
+      font-size: 10px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step-menu-item:hover .step-num {
+      background: #2563eb;
+      color: #fff;
+    }
+    .action-icon-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: rgba(15, 23, 42, 0.5);
+      padding: 2px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      vertical-align: middle;
+    }
+    .btn-icon {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 5px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #cbd5e1;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-icon:hover {
+      background: #1e293b;
+      border-color: #334155;
+      color: #fff;
+    }
+    .btn-icon.active {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: #10b981;
+      color: #34d399;
+    }
+    .btn-icon-danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      color: #f87171;
     }
     /* Log Terminal */
     .terminal {
@@ -387,43 +640,38 @@
       <p>Mendukung akun tanpa 2FA / akun dengan 2FA (isi otomatis email & password + email pemulihan / kode 2FA), otomatis menyelesaikan: Verifikasi Masuk ➔ Layer 1 12M Gratis ($0) ➔ Layer 2 6M Tumpuk Gratis ($0) ➔ Layer 3 6M Puncak 24 Bulan ($0) ➔ Autoderegistrasi Play</p>
     </div>
     <div class="header-actions">
-      <select id="batchStartStep" title="Langkah Awal Jalankan Massal">
-        <option value="1">Dari Langkah 1 (semua alur tanpa biaya, tumpuk 2 tahun + deregistrasi)</option>
-        <option value="2">Dari Langkah 2 (sudah masuk, langsung jalankan tumpukan $0 layer ketiga)</option>
-        <option value="3">Dari Langkah 3 (sudah punya 12M, lanjutkan tumpukan $0 layer kedua + ketiga)</option>
-        <option value="4">Dari Langkah 4 (sudah punya 18M, jalankan layer puncak 24M terakhir + deregistrasi)</option>
-        <option value="5">Dari Langkah 5 (hanya ke Google Play untuk membatalkan perpanjangan otomatis)</option>
-      </select>
-      <button class="btn-success" id="btnBatchRun" onclick="runBatch()">
-        ▶ Jalankan Otomatis Semua Akun yang Perlu Dijalankan
-      </button>
-      <button class="btn-danger" onclick="stopAll()">
-        ⏹ Hentikan Tugas
+      <div class="global-status-pill" id="globalStatusPill">🟢 Sistem Siap</div>
+      <button class="btn-danger btn-sm" onclick="stopAll()" id="btnGlobalStop" title="Hentikan semua tugas yang sedang berjalan">
+        ⏹ Hentikan Semua
       </button>
     </div>
   </div>
 
-  <!-- 5-Step Pipeline Overview -->
-  <div class="pipeline-bar">
-    <div class="pipe-item">
-      <strong>Langkah 1 · Masuk & Lolos Verifikasi</strong>
-      <span>Isi email & password otomatis + email pemulihan / kode dinamis 2FA</span>
+  <!-- 5-Step Connected Pipeline Stepper -->
+  <div class="stepper-bar">
+    <div class="stepper-step">
+      <div class="stepper-num">1</div>
+      <div><span class="stepper-label">Masuk & 2FA</span><span class="stepper-sub">(Auto Email/TOTP)</span></div>
     </div>
-    <div class="pipe-item">
-      <strong>Langkah 2 · Layer 1 12B Gratis ($0)</strong>
-      <span>12B Pro 5TB + Uji Coba YT (kartu belum diikat → ikat otomatis inline)</span>
+    <div class="stepper-arrow">➔</div>
+    <div class="stepper-step">
+      <div class="stepper-num">2</div>
+      <div><span class="stepper-label">Layer 1 (12B $0)</span><span class="stepper-sub">(Pro 5TB + YT)</span></div>
     </div>
-    <div class="pipe-item">
-      <strong>Langkah 3 · Layer 2 6B Tumpuk ($0)</strong>
-      <span>S25 Pro 6B + Uji Coba YT, Mode 5 diperpanjang sampai 18 bulan</span>
+    <div class="stepper-arrow">➔</div>
+    <div class="stepper-step">
+      <div class="stepper-num">3</div>
+      <div><span class="stepper-label">Layer 2 (6B $0)</span><span class="stepper-sub">(Mode 5 ➔ 18 Bln)</span></div>
     </div>
-    <div class="pipe-item">
-      <strong>Langkah 4 · Layer 3 6B Puncak ($0)</strong>
-      <span>Pixel 6B + Uji Coba YT, Mode 5 ditumpuk sampai 24 bulan (2028-10)</span>
+    <div class="stepper-arrow">➔</div>
+    <div class="stepper-step">
+      <div class="stepper-num">4</div>
+      <div><span class="stepper-label">Layer 3 (Puncak $0)</span><span class="stepper-sub">(Tumpuk 24 Bln)</span></div>
     </div>
-    <div class="pipe-item">
-      <strong>Langkah 5 · Autoderegistrasi Terkunci</strong>
-      <span>Batalkan perpanjangan di Toko Play, seluruh proses US$0.00 dengan bukti screenshot</span>
+    <div class="stepper-arrow">➔</div>
+    <div class="stepper-step">
+      <div class="stepper-num">5</div>
+      <div><span class="stepper-label">Kunci Play Store</span><span class="stepper-sub">(Batal Perpanjang $0)</span></div>
     </div>
   </div>
 
@@ -437,20 +685,30 @@
       </div>
       <div class="form-grid">
         <div class="form-group col-2">
-          <label>🌍 Wilayah Target / Zona Kode Pos Bebas Bea Cukai (tumpukan Pro 2 tahun tanpa biaya tetap melewati negara bagian bebas pajak AS 97201)</label>
-          <select id="cfgTargetRegion" onchange="onRegionChange(this.value)">
-            <option value="US">🇺🇸 Zona Bebas Pajak AS (US / USD · Oregon 97201) — Pilihan Wajib untuk Tumpukan Pro 2 Tahun Tanpa Biaya US$0.00 (5 TB)</option>
-          </select>
+          <label>🌍 Wilayah Bebas Pajak</label>
+          <div class="static-badge-field">
+            <span class="badge-flag">🇺🇸</span>
+            <div>
+              <strong>Oregon 97201 (Bebas Bea Cukai AS)</strong>
+              <div class="badge-sub">Wajib untuk tumpukan 2 tahun US$0.00</div>
+            </div>
+          </div>
+          <input type="hidden" id="cfgTargetRegion" value="US" />
         </div>
         <div class="form-group col-2">
-          <label>🎯 Skema Eksekusi Target</label>
-          <select id="cfgTargetPlan">
-            <option value="pro_2year_zero">🎁 Tumpukan Pro Google AI 2 Tahun Tanpa Biaya (5 TB) — Sepanjang Proses US$0.00, Penuh 24 Bulan Sampai 2028-10</option>
-          </select>
+          <label>🎯 Skema Promo Target</label>
+          <div class="static-badge-field">
+            <span class="badge-flag">🎁</span>
+            <div>
+              <strong>Google AI Pro 5 TB (24 Bulan Penuh)</strong>
+              <div class="badge-sub">US$0.00 sepanjang proses s/d 2028-10</div>
+            </div>
+          </div>
+          <input type="hidden" id="cfgTargetPlan" value="pro_2year_zero" />
         </div>
         <div class="form-group col-2">
           <label>Nomor Kartu (Mendukung Kartu Valuta Asing Visa / Mastercard, hanya untuk verifikasi uji coba $0.00)</label>
-          <input type="text" id="cfgCardNumber" placeholder="请填写您的 Visa / Mastercard 卡号 (16位)" />
+          <input type="text" id="cfgCardNumber" placeholder="Nomor kartu Visa / Mastercard (16 digit)" />
         </div>
         <div class="form-group">
           <label>Periode Berlaku (Bulan / Tahun)</label>
@@ -465,7 +723,7 @@
         </div>
         <div class="form-group">
           <label>Nama Pemilik Kartu</label>
-          <input type="text" id="cfgHolder" placeholder="英文姓名 (如 ZHANG SAN)" />
+          <input type="text" id="cfgHolder" placeholder="Nama pemilik kartu (mis. AMINADAB YUNUS)" />
         </div>
         <div class="form-group col-2">
           <label>Alamat Tagihan (Baris Alamat 1)</label>
@@ -519,21 +777,41 @@
   <!-- Accounts Table Card -->
   <div class="card" style="margin-bottom: 18px;">
     <div class="card-title">
-      <span>📋 Antrian Akun & Monitoring Progres Real-Time (klik kode dinamis 2FA untuk menyalin sekali klik)</span>
-      <span id="summaryStats" style="font-size:12.5px; color:var(--muted); font-weight:normal;">加载中...</span>
+      <div class="table-header-toolbar">
+        <div class="table-header-left">
+          <span class="table-title">📋 Antrian Akun & Monitoring Progres</span>
+          <span id="summaryStats" class="summary-badge">Memuat data...</span>
+        </div>
+        <div class="batch-controls">
+          <span class="batch-label">Jalankan Semua Akun dari:</span>
+          <select id="batchStartStep" class="batch-select" title="Pilih langkah awal untuk eksekusi massal">
+            <option value="1">Langkah 1 (Alur Lengkap 24 Bln)</option>
+            <option value="2">Langkah 2 (Layer 1 12M $0)</option>
+            <option value="3">Langkah 3 (Layer 2 6M $0)</option>
+            <option value="4">Langkah 4 (Layer 3 6M Puncak $0)</option>
+            <option value="5">Langkah 5 (Kunci Play Store)</option>
+          </select>
+          <button class="btn-success btn-sm" id="btnBatchRun" onclick="runBatch()" title="Jalankan otomatis semua akun yang belum selesai">
+            ▶ Jalankan Semua
+          </button>
+          <button class="btn-danger btn-sm" onclick="stopAll()" title="Hentikan eksekusi tugas">
+            ⏹ Stop
+          </button>
+        </div>
+      </div>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th style="width:85px;">No</th>
-            <th style="width:250px;">Email Google / Password / Email Pemulihan</th>
-            <th style="width:140px;">Cara Verifikasi / 2FA</th>
-            <th style="width:110px;">Status</th>
-            <th style="width:320px;">Progres Alur Kerja 5 Langkah Pro 2 Tahun Tanpa Biaya</th>
-            <th style="width:155px;">Masa Berlaku Saat Ini</th>
-            <th style="width:75px;">Gambar Verifikasi</th>
-            <th>Operasi Kontrol Per Akun</th>
+            <th style="width:75px;">No</th>
+            <th style="width:250px;">Email / Password / Keamanan</th>
+            <th style="width:130px;">2FA / Pemulihan</th>
+            <th style="width:115px;">Status</th>
+            <th style="width:260px;">Progres Alur (Klik Step untuk Mulai)</th>
+            <th style="width:125px;">Masa Berlaku</th>
+            <th style="width:65px;">Bukti</th>
+            <th style="width:220px;">Aksi Kontrol</th>
           </tr>
         </thead>
         <tbody id="accountsTbody"></tbody>
@@ -619,7 +897,18 @@
         const done = (data.accounts || []).filter(a => a.status === 'completed').length;
         const running = data.active_count || 0;
         document.getElementById('summaryStats').textContent =
-          `Total ${total} akun | Selesai: ${done} | Sedang Berjalan: ${running}`;
+          `Total ${total} Akun · Selesai: ${done} · Berjalan: ${running}`;
+
+        const pill = document.getElementById('globalStatusPill');
+        if (pill) {
+          if (running > 0) {
+            pill.className = 'global-status-pill running';
+            pill.innerHTML = `⚡ Sedang Memproses ${running} Akun...`;
+          } else {
+            pill.className = 'global-status-pill';
+            pill.innerHTML = `🟢 Sistem Siap`;
+          }
+        }
       } catch (e) {
         console.error('State poll error:', e);
       }
@@ -638,13 +927,27 @@
       return `<span class="status-badge ${cls}">${label}</span>`;
     }
 
-    function stepDotsHtml(curStep, status) {
+    function stepDotsHtml(accId, curStep, status, isRunning) {
+      const stepNames = [
+        'L1: Masuk Akun & 2FA',
+        'L2: Layer 1 12B ($0.00)',
+        'L3: Layer 2 6B Tumpuk ($0.00)',
+        'L4: Layer 3 6B Puncak ($0.00)',
+        'L5: Batalkan Perpanjangan di Play'
+      ];
       let html = '<div class="step-dots">';
       for (let s = 1; s <= 5; s++) {
         let cls = '';
-        if (status === 'completed' || s < curStep) cls = 'done';
-        else if (s === curStep && (status === 'running' || status === 'waiting_human')) cls = 'active';
-        html += `<div class="step-dot ${cls}" title="Langkah ${s}">${s}</div>`;
+        let dotLabel = s;
+        if (status === 'completed' || s < curStep) {
+          cls = 'done';
+          dotLabel = '✓';
+        } else if (s === curStep && (status === 'running' || status === 'waiting_human')) {
+          cls = 'active';
+        }
+        const actionAttr = isRunning ? '' : `onclick="runSingle('${accId}', ${s})"`;
+        const tipText = isRunning ? stepNames[s-1] : `Klik untuk jalankan akun ini dari ${stepNames[s-1]}`;
+        html += `<div class="step-dot ${cls} ${isRunning ? '' : 'clickable'}" ${actionAttr} title="${tipText}">${dotLabel}</div>`;
       }
       html += '</div>';
       return html;
@@ -653,7 +956,6 @@
     function renderAccounts(accounts) {
       const tbody = document.getElementById('accountsTbody');
       tbody.innerHTML = accounts.map(acc => {
-        const savedStart = selectedStartSteps[acc.id] || 1;
         const shotBtn = acc.last_screenshot
           ? `<button class="btn-sm btn-secondary" onclick="showScreenshot('${acc.id}', '${acc.last_screenshot}')">🖼 Lihat</button>`
           : `<span style="color:var(--muted);font-size:12px;">-</span>`;
@@ -664,6 +966,116 @@
                <span class="totp-rem">${acc.totp_rem}s</span>
              </div>`
           : `<span style="font-size:12px; color:#34d399;">📧 Verifikasi Email Pemulihan</span>`;
+
+        const isWaitingHuman = acc.status === 'waiting_human' || acc.waiting_human || acc.is_paused;
+        let actionControls = '';
+
+        if (acc.is_running) {
+          if (isWaitingHuman) {
+            actionControls = `
+              <button
+                class="btn-sm btn-success"
+                style="background:#059669; animation:pulse 1.2s infinite; font-weight:bold;"
+                onclick="resumeSingle('${acc.id}')"
+                title="Lanjutkan otomatisasi setelah Anda selesai melakukan tindakan manual di Chrome"
+              >
+                ▶ Lanjutkan
+              </button>
+              <button class="btn-sm btn-danger" onclick="stopSingle('${acc.id}')" title="Hentikan eksekusi akun ini">
+                ⏹ Stop
+              </button>
+            `;
+          } else {
+            actionControls = `
+              <button
+                class="btn-sm btn-secondary"
+                style="border-color:#f59e0b; color:#fbbf24; font-weight:600;"
+                onclick="takeoverSingle('${acc.id}')"
+                title="Ambil alih manual: Jeda otomatisasi sekarang agar Anda bisa mengklik/mengisi sendiri di Chrome tanpa gangguan"
+              >
+                🖐️ Ambil Alih
+              </button>
+              <button class="btn-sm btn-danger" onclick="stopSingle('${acc.id}')" title="Hentikan eksekusi akun ini">
+                ⏹ Stop
+              </button>
+            `;
+          }
+        } else {
+          actionControls = `
+            <div class="run-btn-group">
+              <button
+                class="btn-sm btn-success"
+                onclick="runSingle('${acc.id}')"
+                title="Jalankan akun ini (klik tanda ▾ untuk memilih langkah awal)"
+              >
+                ▶ Jalankan
+              </button>
+              <button
+                class="btn-sm btn-success step-menu-trigger"
+                onclick="toggleStepMenu(event, '${acc.id}')"
+                title="Pilih langkah awal spesifik"
+              >
+                ▾
+              </button>
+              <div class="step-dropdown-menu" id="stepMenu_${acc.id}">
+                <div class="step-menu-header">Mulai dari Langkah:</div>
+                <button type="button" class="step-menu-item" onclick="runSingle('${acc.id}', 1)">
+                  <span class="step-num">1</span>
+                  <span class="step-txt">Alur Penuh (Langkah 1 - 5)</span>
+                </button>
+                <button type="button" class="step-menu-item" onclick="runSingle('${acc.id}', 2)">
+                  <span class="step-num">2</span>
+                  <span class="step-txt">Layer 1 12M ($0.00)</span>
+                </button>
+                <button type="button" class="step-menu-item" onclick="runSingle('${acc.id}', 3)">
+                  <span class="step-num">3</span>
+                  <span class="step-txt">Layer 2 6B Tumpuk ($0.00)</span>
+                </button>
+                <button type="button" class="step-menu-item" onclick="runSingle('${acc.id}', 4)">
+                  <span class="step-num">4</span>
+                  <span class="step-txt">Layer 3 6B Puncak ($0.00)</span>
+                </button>
+                <button type="button" class="step-menu-item" onclick="runSingle('${acc.id}', 5)">
+                  <span class="step-num">5</span>
+                  <span class="step-txt">Batalkan Perpanjangan Play</span>
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+        const utilityButtons = `
+          <div class="action-icon-group">
+            <button
+              class="btn-icon ${openedBrowserMap[acc.id] ? 'active' : ''}"
+              onclick="openBrowser('${acc.id}')"
+              title="${acc.is_running ? 'Fokus ke jendela Chrome yang sedang berjalan' : 'Buka jendela Chrome independen untuk akun ini'}"
+            >
+              🌐
+            </button>
+            <button
+              class="btn-icon ${copiedAccountMap[acc.id] ? 'active' : ''}"
+              onclick="copyAccountFull('${acc.id}', '${acc.email}', '${acc.password}', '${acc.totp_secret || acc.recovery_email || ''}')"
+              title="Salin Email, Password & 2FA"
+            >
+              📋
+            </button>
+            <button
+              class="btn-icon"
+              onclick="resetAccount('${acc.id}')"
+              title="Setel ulang status menjadi Belum Dijalankan"
+            >
+              🔄
+            </button>
+            <button
+              class="btn-icon btn-icon-danger"
+              onclick="deleteAccount('${acc.id}')"
+              title="Hapus akun ini dari antrian"
+            >
+              🗑️
+            </button>
+          </div>
+        `;
 
         return `
           <tr>
@@ -679,7 +1091,7 @@
             <td>${totpHtml}</td>
             <td>${statusBadgeHtml(acc.status)}</td>
             <td>
-              ${stepDotsHtml(acc.current_step || 0, acc.status)}
+              ${stepDotsHtml(acc.id, acc.current_step || 0, acc.status, acc.is_running)}
               <div class="step-msg">${acc.step_message || ''}</div>
             </td>
             <td>
@@ -689,64 +1101,9 @@
             </td>
             <td>${shotBtn}</td>
             <td>
-              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                <select
-                  style="padding:4px 6px; font-size:12px;"
-                  onchange="selectedStartSteps['${acc.id}'] = parseInt(this.value)"
-                >
-                  <option value="1" ${savedStart === 1 ? 'selected' : ''}>Dari Langkah 1 jalankan semua</option>
-                  <option value="2" ${savedStart === 2 ? 'selected' : ''}>Dari Langkah 2 layer pertama 12B($0)</option>
-                  <option value="3" ${savedStart === 3 ? 'selected' : ''}>Dari Langkah 3 layer kedua 6B($0)</option>
-                  <option value="4" ${savedStart === 4 ? 'selected' : ''}>Dari Langkah 4 layer ketiga puncak($0)</option>
-                  <option value="5" ${savedStart === 5 ? 'selected' : ''}>Dari Langkah 5 kunci deregistrasi</option>
-                </select>
-                ${(acc.is_running) ? (
-                  (acc.status === 'waiting_human' || acc.waiting_human || acc.is_paused) ? `
-                    <button
-                      class="btn-sm btn-success"
-                      style="background:#059669; animation:pulse 1.2s infinite; font-weight:bold;"
-                      onclick="resumeSingle('${acc.id}')"
-                      title="Lanjutkan otomatisasi setelah Anda selesai melakukan tindakan manual di Chrome"
-                    >
-                      ▶ Lanjutkan
-                    </button>
-                  ` : `
-                    <button
-                      class="btn-sm btn-secondary"
-                      style="border-color:#f59e0b; color:#fbbf24; font-weight:600;"
-                      onclick="takeoverSingle('${acc.id}')"
-                      title="Ambil alih manual: Jeda otomatisasi sekarang agar Anda bisa mengklik/mengisi sendiri di Chrome tanpa gangguan"
-                    >
-                      🖐️ Ambil Alih
-                    </button>
-                  `
-                ) : ''}
-                <button
-                  class="btn-sm ${acc.is_running ? 'btn-danger' : 'btn-success'}"
-                  onclick="${acc.is_running ? `stopSingle('${acc.id}')` : `runSingle('${acc.id}')`}"
-                >
-                  ${acc.is_running ? '⏹ Hentikan' : '▶ Mulai Lengkap'}
-                </button>
-                <button
-                  class="btn-sm ${openedBrowserMap[acc.id] ? 'btn-success' : 'btn-secondary'}"
-                  onclick="openBrowser('${acc.id}')"
-                  title="${acc.is_running ? 'Fokus ke jendela Chrome yang sedang berjalan' : 'Buka jendela Chrome independen untuk akun ini secara manual'}"
-                >
-                  ${acc.is_running ? '🌐 Fokus Chrome' : (openedBrowserMap[acc.id] ? '✅ Sudah Dibuka' : '🌐 Browser')}
-                </button>
-                <button class="btn-sm btn-secondary" onclick="resetAccount('${acc.id}')" title="Setel ulang Status menjadi Belum Dijalankan">
-                  🔄
-                </button>
-                <button class="btn-sm btn-secondary" onclick="deleteAccount('${acc.id}')" title="Hapus akun ini">
-                  🗑️
-                </button>
-                <button
-                  class="btn-sm ${copiedAccountMap[acc.id] ? 'btn-success' : 'btn-secondary'}"
-                  onclick="copyAccountFull('${acc.id}', '${acc.email}', '${acc.password}', '${acc.totp_secret || acc.recovery_email || ''}')"
-                  title="Salin informasi akun sekali klik"
-                >
-                  ${copiedAccountMap[acc.id] ? '✅ Sudah Disalin' : '📋 Salin'}
-                </button>
+              <div style="display:flex; align-items:center; gap:8px;">
+                ${actionControls}
+                ${utilityButtons}
               </div>
             </td>
           </tr>
@@ -804,7 +1161,7 @@
         }
       } catch (e) {
         resBox.style.color = '#f87171';
-        resBox.textContent = '❌ 请求异常: ' + e;
+        resBox.textContent = '❌ Terjadi kesalahan request: ' + e;
       } finally {
         btn.disabled = false;
         btn.textContent = '🔍 Uji Konektivitas Proksi';
@@ -812,7 +1169,7 @@
       }
     }
 
-    async function saveConfig() {
+    async function saveConfig(silent = false) {
       const region = document.getElementById('cfgTargetRegion').value || 'US';
       const payload = {
         target_region: region,
@@ -836,7 +1193,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      alert('✅ Konfigurasi tersimpan!');
+      if (!silent) {
+        alert('✅ Konfigurasi tersimpan!');
+      }
       fetchState();
     }
 
@@ -871,14 +1230,15 @@
       return true;
     }
 
-    async function runSingle(accountId) {
-      const startStep = selectedStartSteps[accountId] || 1;
-      if (!validateCardBeforeRun(startStep)) return;
-      await saveConfig();
+    async function runSingle(accountId, startStep = null) {
+      document.querySelectorAll('.step-dropdown-menu').forEach(m => m.classList.remove('show'));
+      const stepToRun = startStep || selectedStartSteps[accountId] || 1;
+      if (!validateCardBeforeRun(stepToRun)) return;
+      await saveConfig(true);
       const res = await fetch('/api/run/single', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account_id: accountId, start_step: startStep })
+        body: JSON.stringify({ account_id: accountId, start_step: stepToRun })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -887,10 +1247,25 @@
       fetchState();
     }
 
+    function toggleStepMenu(event, accountId) {
+      if (event) event.stopPropagation();
+      document.querySelectorAll('.step-dropdown-menu').forEach(m => {
+        if (m.id !== 'stepMenu_' + accountId) m.classList.remove('show');
+      });
+      const menu = document.getElementById('stepMenu_' + accountId);
+      if (menu) menu.classList.toggle('show');
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.run-btn-group')) {
+        document.querySelectorAll('.step-dropdown-menu').forEach(m => m.classList.remove('show'));
+      }
+    });
+
     async function runBatch() {
       const startStep = parseInt(document.getElementById('batchStartStep').value || '1');
       if (!validateCardBeforeRun(startStep)) return;
-      await saveConfig();
+      await saveConfig(true);
       const res = await fetch('/api/run/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
