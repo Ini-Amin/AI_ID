@@ -1473,30 +1473,65 @@ class GoogleUltraAutomator:
         all_btns = target_fr.locator('button, [role="button"]')
         bcnt = await all_btns.count()
         clicked = False
+        target_btn = None
         for i in range(bcnt):
             b = all_btns.nth(i)
             try:
                 btxt = (await b.inner_text()).strip()
-                if btxt in ("订阅", "Subscribe"):
-                    self.log(f"--> Sedang mengklik tombol [{btxt}] [{step_tag}]...")
+                btxt_l = btxt.lower()
+                if btxt in ("订阅", "Subscribe", "Langganan", "Berlangganan") or "langganan" in btxt_l or "subscribe" in btxt_l or "订阅" in btxt:
+                    target_btn = b
+                    self.log(f"--> Sedang mengklik tombol [{btxt}] [{step_tag}] via Playwright trusted click...")
                     try:
                         await b.scroll_into_view_if_needed(timeout=3000)
                         await b.click(timeout=5000)
                         clicked = True
                     except Exception:
-                        await b.click(force=True, timeout=5000)
-                        clicked = True
+                        try:
+                            await b.click(force=True, timeout=5000)
+                            clicked = True
+                        except Exception:
+                            pass
                     break
             except Exception as click_err:
-                self.log(f"[{step_tag}] Pesan klik biasa ({click_err}), beralih ke pemicu klik asli JS...")
+                self.log(f"[{step_tag}] Pesan klik biasa ({click_err}), mencoba metode lain...")
 
+        # Fallback 2: Direct text locator (Playwright trusted click)
+        if not clicked:
+            try:
+                direct_sub = target_fr.locator(
+                    'button:has-text("Langganan"), button:has-text("Berlangganan"), button:has-text("Subscribe"), button:has-text("订阅"), [role="button"]:has-text("Langganan"), [role="button"]:has-text("Berlangganan"), [role="button"]:has-text("Subscribe"), [role="button"]:has-text("订阅")'
+                ).first
+                if await direct_sub.count() > 0:
+                    self.log(f"--> Mengklik tombol via direct text locator...")
+                    await direct_sub.scroll_into_view_if_needed(timeout=3000)
+                    await direct_sub.click(force=True, timeout=5000)
+                    clicked = True
+                    target_btn = direct_sub
+            except Exception as d_err:
+                self.log(f"[{step_tag}] Pesan direct text click: {d_err}")
+
+        # Fallback 3: Trusted mouse click by bounding box coordinates
+        if not clicked and target_btn:
+            try:
+                box = await target_btn.bounding_box()
+                if box and box["width"] > 20 and box["height"] > 10:
+                    cx = box["x"] + box["width"] / 2
+                    cy = box["y"] + box["height"] / 2
+                    self.log(f"--> Mengklik tombol [{step_tag}] via koordinat mouse asli ({cx:.1f}, {cy:.1f})...")
+                    await page.mouse.click(cx, cy)
+                    clicked = True
+            except Exception as box_err:
+                self.log(f"[{step_tag}] Gagal klik koordinat mouse: {box_err}")
+
+        # Fallback 4: Native JS dispatch (last resort)
         if not clicked:
             js_clicked = await target_fr.evaluate(
                 """() => {
                 const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
                 const sub = btns.find(b => {
-                    const bt = (b.innerText || '').trim();
-                    return bt === '订阅' || bt === 'Subscribe' || bt === 'Berlangganan' || bt.toLowerCase().includes('langganan');
+                    const bt = (b.innerText || '').trim().toLowerCase();
+                    return bt === '订阅' || bt === 'subscribe' || bt === 'berlangganan' || bt === 'langganan' || bt.includes('langganan');
                 });
                 if (sub) {
                     sub.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
@@ -1528,6 +1563,18 @@ class GoogleUltraAutomator:
             eacquire_present = False
             reauth_spinning = False
             ordered_frames = [f for f in page.frames if f != page.main_frame] + [page.main_frame]
+            if wait_i in (2, 4, 7):
+                for rf in ordered_frames:
+                    if "eacquire" in (rf.url or ""):
+                        retry_sub = rf.locator('button:has-text("Langganan"), button:has-text("Berlangganan"), button:has-text("Subscribe"), button:has-text("订阅")').first
+                        try:
+                            if await retry_sub.count() > 0 and await retry_sub.is_visible():
+                                self.log(f"[{step_tag}] Popup checkout masih terbuka (putaran {wait_i}), mengklik ulang tombol Langganan...")
+                                await retry_sub.scroll_into_view_if_needed(timeout=2000)
+                                await retry_sub.click(force=True, timeout=3000)
+                        except Exception:
+                            pass
+
             for f2 in ordered_frames:
                 f2_url = f2.url or ""
                 if "eacquire" in f2_url:
@@ -1620,12 +1667,22 @@ class GoogleUltraAutomator:
                                 "以后再说",
                                 "知道了",
                                 "Got it",
+                                "Telah berlangganan",
+                                "Terima kasih telah berlangganan",
+                                "Poin Google Play",
+                                "Poin Play",
+                                "Metode pembayaran cadangan",
+                                "Nanti saja",
+                                "Lain kali",
+                                "Mengerti",
+                                "Selesai",
+                                "Berhasil berlangganan",
                             )
                         ):
                             self.log(f"✅ [{step_tag}] Mendeteksi konfirmasi sukses langganan！")
                             await self.save_screenshot(page, f"{step_tag}_after_click")
                             try:
-                                dismiss_btn = f2.locator('button:has-text("Nanti saja"), button:has-text("Lain kali"), button:has-text("Mengerti"), button:has-text("以后再说"), [role="button"]:has-text("以后再说"), button:has-text("Not now"), [role="button"]:has-text("Not now"), button:has-text("不用了"), button:has-text("知道了")').first
+                                dismiss_btn = f2.locator('button:has-text("Nanti saja"), button:has-text("Lain kali"), button:has-text("Mengerti"), button:has-text("Selesai"), button:has-text("Tutup"), button:has-text("以后再说"), [role="button"]:has-text("以后再说"), button:has-text("Not now"), [role="button"]:has-text("Not now"), button:has-text("不用了"), button:has-text("知道了")').first
                                 if await dismiss_btn.count() > 0 and await dismiss_btn.is_visible():
                                     self.log(f"[{step_tag}] Sedang mengklik【Nanti Saja】untuk menutup popup agar menyinkronkan status pesanan...")
                                     try:
@@ -1672,6 +1729,11 @@ class GoogleUltraAutomator:
                             "Check that you have the correct country",
                             "declined",
                             "insufficient funds",
+                            "Pembayaran Anda ditolak",
+                            "Pembelian gagal",
+                            "Terjadi kesalahan",
+                            "Tidak dapat menyelesaikan",
+                            "Dana tidak mencukupi",
                         ]
                         if any(err_kw in clean_after for err_kw in err_keywords):
                             err_lines = [line.strip() for line in ft_after.splitlines() if any(err_kw in line for err_kw in err_keywords)]
