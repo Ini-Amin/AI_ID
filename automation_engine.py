@@ -1236,216 +1236,127 @@ class GoogleUltraAutomator:
         city_v = (self.card.get("locality") or "Portland").strip()
         state_v = (self.card.get("province") or "OR").strip()
 
-        # 1. Cari field input Nomor Kartu
-        card_inp = tf.locator(
-            'input[autocomplete="cc-number"], input[name*="card" i], input[id*="card" i], input[aria-label*="kartu" i], input[aria-label*="card" i], input[aria-label*="卡号" i], input[placeholder*="kartu" i], input[placeholder*="card" i]'
-        ).first
-        if await card_inp.count() == 0 or not await card_inp.is_visible():
-            tels = tf.locator('input[type="tel"]:visible, input[type="text"]:visible')
-            if await tels.count() > 0:
-                card_inp = tels.first
-            else:
-                return False
+        self.log(f"[{step_tag}] 💳 Sedang mengisi data kartu & alamat penagihan secara presisi...")
+        cnum_spaced = f"{cnum[:4]} {cnum[4:8]} {cnum[8:12]} {cnum[12:]}".strip()
 
-        self.log(f"[{step_tag}] 💳 Mengisi Nomor Kartu secara aman tanpa loncat ke Expiry Date...")
+        # 1. Evaluasi DOM pintar berbasis parent label dan pemetaan posisi (0: Nomor, 1: Exp, 2: CVV, 3: Nama, 4: ZIP)
         try:
-            await card_inp.click(force=True)
-            await asyncio.sleep(0.15)
-            await card_inp.press("ControlOrMeta+a")
-            await card_inp.press("Backspace")
-            await asyncio.sleep(0.1)
-            # Isi nomor kartu secara atomik agar Google tidak memicu auto-advance di tengah pengetikan
-            await card_inp.fill(cnum)
-            await asyncio.sleep(0.2)
-            await card_inp.dispatch_event("input")
-            await card_inp.dispatch_event("change")
+            await tf.evaluate(
+                """(data) => {
+                const inputs = Array.from(document.querySelectorAll('input')).filter(el => el.offsetWidth > 0);
+                for (let idx = 0; idx < inputs.length; idx++) {
+                    const inp = inputs[idx];
+                    const parent = inp.closest('.VfPpkd-fmcmS-yrriRe') || inp.parentElement;
+                    const txt = ((parent ? parent.innerText : '') + ' ' + (inp.getAttribute('aria-label') || '') + ' ' + (inp.getAttribute('autocomplete') || '')).toLowerCase();
+
+                    if (txt.includes('nomor') || txt.includes('card number') || idx === 0) {
+                        inp.focus();
+                        inp.value = data.cnum_spaced;
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (txt.includes('bb/tt') || txt.includes('mm/yy') || txt.includes('masa berlaku') || txt.includes('expiration') || idx === 1) {
+                        inp.focus();
+                        inp.value = data.exp;
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (txt.includes('cvv') || txt.includes('cvc') || txt.includes('keamanan') || txt.includes('security') || idx === 2) {
+                        inp.focus();
+                        inp.value = data.cvc;
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (txt.includes('nama') || txt.includes('name') || inp.getAttribute('autocomplete') === 'name' || idx === 3) {
+                        // Selalu ganti nama pemilik kartu dengan nama konfigurasi (timpa nama akun Google asli)
+                        inp.focus();
+                        inp.value = data.holder;
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (txt.includes('pos') || txt.includes('zip') || inp.getAttribute('autocomplete') === 'postal-code' || idx === 4) {
+                        inp.focus();
+                        inp.value = data.zip;
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            }""",
+                {
+                    "cnum_spaced": cnum_spaced,
+                    "exp": f"{expm}/{expy}",
+                    "cvc": cvc_v,
+                    "holder": holder_v,
+                    "zip": zip_v,
+                }
+            )
             await asyncio.sleep(0.3)
         except Exception as e:
-            self.log(f"[{step_tag}] Peringatan saat mengisi nomor kartu: {e}")
+            self.log(f"[{step_tag}] Evaluasi DOM awal: {e}")
 
-        # Jika form belum mengembang, simulasikan penekanan digit terakhir untuk memicu listener keyboard Google
-        exp_loc = tf.locator('input[autocomplete="cc-exp"], input[placeholder*="MM" i], input[placeholder*="BB" i], input[aria-label*="MM" i], input[aria-label*="kedaluwarsa" i], input[aria-label*="expir" i], input[name*="exp" i]')
-        if await exp_loc.count() == 0 or not await exp_loc.first.is_visible():
+        # 2. Interaksi langsung Playwright pada setiap field untuk memicu event validator Material Google
+        vis = tf.locator("input:visible")
+        v_cnt = await vis.count()
+        if v_cnt >= 4:
+            # Field 0: Nomor Kartu
             try:
-                await card_inp.focus()
-                await card_inp.press("Backspace")
-                await asyncio.sleep(0.1)
-                await card_inp.press(cnum[-1])
-                await asyncio.sleep(0.5)
-            except Exception:
-                pass
-
-        # Tunggu form mengembang menampilkan field Expiry Date, CVC, Nama, Alamat/ZIP
-        for _w in range(15):
-            await asyncio.sleep(0.3)
-            if await exp_loc.count() > 0 and await exp_loc.first.is_visible():
-                break
-
-        # 2. Isi Masa Berlaku Kartu (MM/YY)
-        exp_inp = exp_loc.first
-        if await exp_inp.count() > 0 and await exp_inp.is_visible():
-            self.log(f"[{step_tag}] 📅 Mengisi Masa Berlaku Kartu ({expm}/{expy})...")
-            try:
-                await exp_inp.click(force=True)
-                await asyncio.sleep(0.1)
-                await exp_inp.press("ControlOrMeta+a")
-                await exp_inp.press("Backspace")
-                await asyncio.sleep(0.1)
-                await exp_inp.fill(f"{expm}{expy}")
-                val = await exp_inp.input_value()
-                if not val:
-                    await exp_inp.press_sequentially(f"{expm}{expy}", delay=35)
-                await asyncio.sleep(0.2)
-            except Exception as e:
-                self.log(f"[{step_tag}] Peringatan saat mengisi tanggal kedaluwarsa: {e}")
-
-        # 3. Isi Kode Keamanan (CVC)
-        cvc_inp = tf.locator(
-            'input[autocomplete="cc-csc"], input[name="cvc"], input[id*="cvc" i], input[placeholder*="CVC" i], input[placeholder*="CVV" i], input[placeholder*="keamanan" i], input[aria-label*="CVC" i], input[aria-label*="CVV" i], input[aria-label*="keamanan" i], input[aria-label*="security" i]'
-        ).first
-        if await cvc_inp.count() > 0 and await cvc_inp.is_visible():
-            self.log(f"[{step_tag}] 🔒 Mengisi Kode Keamanan (CVC)...")
-            try:
-                await cvc_inp.click(force=True)
-                await asyncio.sleep(0.1)
-                await cvc_inp.press("ControlOrMeta+a")
-                await cvc_inp.press("Backspace")
-                await asyncio.sleep(0.1)
-                await cvc_inp.fill(cvc_v)
-                val = await cvc_inp.input_value()
-                if not val:
-                    await cvc_inp.press_sequentially(cvc_v, delay=35)
-                await asyncio.sleep(0.2)
-            except Exception as e:
-                self.log(f"[{step_tag}] Peringatan saat mengisi CVC: {e}")
-
-        # 4. Isi Nama Pemegang Kartu
-        name_inp = tf.locator(
-            'input[autocomplete="cc-name"], input[autocomplete="name"], input[aria-label*="nama" i], input[aria-label*="name" i], input[aria-label*="持卡人" i], input[placeholder*="nama" i], input[placeholder*="name" i], input[name*="name" i]'
-        ).first
-        if await name_inp.count() > 0 and await name_inp.is_visible():
-            try:
-                cur_name = (await name_inp.input_value()).strip()
-                if not cur_name or cur_name.lower() in ("card holder", "nama", "name"):
-                    self.log(f"[{step_tag}] 👤 Mengisi Nama Pemilik Kartu: {holder_v}")
-                    await name_inp.click(force=True)
+                val0 = await vis.nth(0).input_value()
+                if not val0 or len(re.sub(r'\D', '', val0)) < 16:
+                    await vis.nth(0).click(force=True)
                     await asyncio.sleep(0.1)
-                    await name_inp.press("ControlOrMeta+a")
-                    await name_inp.press("Backspace")
-                    await name_inp.fill(holder_v)
-                    await asyncio.sleep(0.2)
+                    await vis.nth(0).press("ControlOrMeta+a")
+                    await vis.nth(0).press("Backspace")
+                    await vis.nth(0).fill(cnum)
             except Exception:
                 pass
 
-        # 5. Isi Alamat Baris 1 (Street Address) jika ada
-        addr_inp = tf.locator(
-            'input[autocomplete="address-line1"], input[autocomplete*="address-line1"], input[name*="address1" i], input[name*="addressLine" i], input[name*="street" i], input[aria-label*="alamat jalan" i], input[aria-label*="baris alamat 1" i], input[aria-label*="street address" i], input[placeholder*="alamat jalan" i], input[placeholder*="baris alamat 1" i]'
-        ).first
-        if await addr_inp.count() > 0 and await addr_inp.is_visible():
+            # Field 1: Expiry Date (BB/TT atau MM/YY)
             try:
-                self.log(f"[{step_tag}] 🏠 Mengisi Alamat Baris 1: {addr1_v}")
-                await addr_inp.click(force=True)
-                await addr_inp.fill(addr1_v)
-                await asyncio.sleep(0.2)
+                val1 = await vis.nth(1).input_value()
+                if not val1 or len(val1) < 4:
+                    await vis.nth(1).click(force=True)
+                    await asyncio.sleep(0.1)
+                    await vis.nth(1).press("ControlOrMeta+a")
+                    await vis.nth(1).press("Backspace")
+                    await vis.nth(1).fill(f"{expm}{expy}")
             except Exception:
                 pass
 
-        # 6. Isi Kota (City) jika ada
-        city_inp = tf.locator(
-            'input[autocomplete="address-level2"], input[autocomplete*="address-level2"], input[name*="city" i], input[name*="locality" i], input[aria-label*="kota" i], input[aria-label*="city" i], input[placeholder*="kota" i], input[placeholder*="city" i]'
-        ).first
-        if await city_inp.count() > 0 and await city_inp.is_visible():
+            # Field 2: CVV / CVC
             try:
-                self.log(f"[{step_tag}] 🏙️ Mengisi Kota: {city_v}")
-                await city_inp.click(force=True)
-                await city_inp.fill(city_v)
-                await asyncio.sleep(0.2)
+                val2 = await vis.nth(2).input_value()
+                if not val2 or len(val2) < 3:
+                    await vis.nth(2).click(force=True)
+                    await asyncio.sleep(0.1)
+                    await vis.nth(2).press("ControlOrMeta+a")
+                    await vis.nth(2).press("Backspace")
+                    await vis.nth(2).fill(cvc_v)
             except Exception:
                 pass
 
-        # 7. Isi Negara Bagian (State) jika ada
-        state_loc = tf.locator(
-            'select[autocomplete*="address-level1"], select[name*="state" i], select[name*="province" i], select[aria-label*="negara bagian" i], select[aria-label*="state" i], select[aria-label*="provinsi" i]'
-        ).first
-        if await state_loc.count() > 0 and await state_loc.is_visible():
+            # Field 3: Nama Pemilik Kartu (Selalu ganti dengan nama konfigurasi)
             try:
-                await state_loc.select_option(value=state_v)
+                await vis.nth(3).click(force=True)
+                await asyncio.sleep(0.1)
+                await vis.nth(3).press("ControlOrMeta+a")
+                await vis.nth(3).press("Backspace")
+                await vis.nth(3).fill(holder_v)
             except Exception:
+                pass
+
+            # Field 4: Kode Pos Penagihan (ZIP)
+            if v_cnt >= 5:
                 try:
-                    await state_loc.select_option(label="Oregon")
+                    val4 = await vis.nth(4).input_value()
+                    if not val4:
+                        await vis.nth(4).click(force=True)
+                        await asyncio.sleep(0.1)
+                        await vis.nth(4).press("ControlOrMeta+a")
+                        await vis.nth(4).press("Backspace")
+                        await vis.nth(4).fill(zip_v)
                 except Exception:
                     pass
 
-        # 8. WAJIB ISI: KODE POS / ZIP CODE
-        zip_filled = False
-        zip_inp = tf.locator(
-            'input[autocomplete="postal-code"], input[autocomplete*="postal-code"], input[name*="postalCode" i], input[name*="postal_code" i], input[name*="zip" i], input[id*="postal" i], input[id*="zip" i], input[placeholder*="kode pos" i], input[placeholder*="postal" i], input[placeholder*="zip" i], input[aria-label*="kode pos" i], input[aria-label*="postal code" i], input[aria-label*="zip" i], input[aria-label*="postcode" i]'
-        ).first
-
-        if await zip_inp.count() > 0 and await zip_inp.is_visible():
-            try:
-                self.log(f"[{step_tag}] 📮 Mengisi Kode Pos (ZIP): {zip_v}")
-                await zip_inp.click(force=True)
-                await asyncio.sleep(0.1)
-                await zip_inp.press("ControlOrMeta+a")
-                await zip_inp.press("Backspace")
-                await zip_inp.fill(zip_v)
-                val = await zip_inp.input_value()
-                if not val:
-                    await zip_inp.press_sequentially(zip_v, delay=35)
-                zip_filled = True
-            except Exception as e:
-                self.log(f"[{step_tag}] Peringatan saat mengisi ZIP: {e}")
-
-        # Fallback pintar via evaluasi DOM JS untuk mencari input Kode Pos
-        if not zip_filled:
-            try:
-                js_zip = await tf.evaluate(
-                    """(zipVal) => {
-                    const inputs = Array.from(document.querySelectorAll('input:visible, input'));
-                    for (const inp of inputs) {
-                        const txt = [
-                            inp.getAttribute('aria-label') || '',
-                            inp.getAttribute('placeholder') || '',
-                            inp.getAttribute('name') || '',
-                            inp.getAttribute('autocomplete') || '',
-                            inp.id || ''
-                        ].join(' ').toLowerCase();
-                        if (txt.includes('pos') || txt.includes('zip') || txt.includes('postal')) {
-                            inp.focus();
-                            inp.value = zipVal;
-                            inp.dispatchEvent(new Event('input', { bubbles: true }));
-                            inp.dispatchEvent(new Event('change', { bubbles: true }));
-                            return true;
-                        }
-                    }
-                    const vis = inputs.filter(el => {
-                        const r = el.getBoundingClientRect();
-                        return r.width > 20 && r.height > 10;
-                    });
-                    if (vis.length >= 4) {
-                        const last = vis[vis.length - 1];
-                        if (!last.value || last.value.length < 3) {
-                            last.focus();
-                            last.value = zipVal;
-                            last.dispatchEvent(new Event('input', { bubbles: true }));
-                            last.dispatchEvent(new Event('change', { bubbles: true }));
-                            return true;
-                        }
-                    }
-                    return false;
-                }""",
-                    zip_v
-                )
-                if js_zip:
-                    zip_filled = True
-                    self.log(f"[{step_tag}] 📮 Berhasil mengisi Kode Pos (ZIP) via DOM fallback: {zip_v}")
-            except Exception:
-                pass
-
+        self.log(f"[{step_tag}] ✅ Formulir kartu terisi lengkap (Nama: {holder_v}, ZIP: {zip_v})")
         await asyncio.sleep(0.5)
 
-        # 9. Klik tombol Simpan Kartu (Save Card)
+        # 3. Klik tombol Simpan Kartu (Save Card)
         sbtn = tf.locator(
             'button:has-text("Simpan kartu"), button:has-text("Simpan"), button:has-text("Save card"), button:has-text("Save"), button:has-text("保存卡"), button:has-text("保存"), [role="button"]:has-text("Simpan kartu"), [role="button"]:has-text("Simpan"), [role="button"]:has-text("Save card"), [role="button"]:has-text("Save")'
         ).first
@@ -1473,6 +1384,19 @@ class GoogleUltraAutomator:
             loops_left -= 1
             self.check_stop()
             await self.wait_if_paused(page)
+            # Cek apakah muncul teka-teki gambar reCAPTCHA (bframe)
+            for p in page.context.pages:
+                for fr in p.frames:
+                    if "recaptcha" in (fr.url or "") and "bframe" in (fr.url or ""):
+                        self.log("🖐️ Terdeteksi teka-teki gambar reCAPTCHA saat verifikasi kartu. Membutuhkan penyelesaian manual pengguna!")
+                        await self.wait_for_human(
+                            page,
+                            reason="Silakan selesaikan teka-teki gambar reCAPTCHA di jendela Chrome Anda...",
+                            timeout=180,
+                            success_checker=lambda pg: not any("bframe" in (f.url or "") for pge in pg.context.pages for f in pge.frames)
+                        )
+                        break
+
             if "accounts.google.com" in page.url or "gds.google.com" in page.url:
                 self.log(f"[{step_tag or 'modal'}] Mendeteksi pengalihan ke halaman verifikasi masuk ({page.url[:60]}), sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
