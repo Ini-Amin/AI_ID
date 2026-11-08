@@ -1773,12 +1773,8 @@ class GoogleUltraAutomator:
                 self.log(f"[{step_tag}] ✅ Halaman dialihkan ke Kelola Langganan (settings?expand=upgrade), menandakan akun ini sudah memiliki paket Google AI Pro (5 TB) aktif! Langkah 2 otomatis selesai.")
                 return True
 
-            # 2. Jika di halaman terdapat tab Tahunan atau berada di halaman kelola paket, selalu alihkan ke tab TAHUNAN!
-            has_annual_tab = await page.evaluate("""() => {
-                const tabs = Array.from(document.querySelectorAll('button, [role="tab"]'));
-                return tabs.some(el => (el.innerText || '').trim() === 'Tahunan' || (el.innerText || '').trim() === 'Annual' || (el.innerText || '').trim() === 'Beralih');
-            }""")
-            if is_stacking or has_annual_tab or "settings" in page.url:
+            # 2. KHUSUS STACKING atau jika berada di halaman kelola paket (settings?expand=upgrade): Alihkan ke TAHUNAN!
+            if is_stacking or "settings" in page.url or "expand=upgrade" in page.url:
                 await self._switch_to_annual_billing(page, step_tag)
             # 3. Pasang HOOK_JS & konfigurasi offer token
             await page.evaluate(HOOK_JS)
@@ -1809,14 +1805,16 @@ class GoogleUltraAutomator:
                             t.includes('开始使用') ||
                             t.includes('获取优惠') || t.includes('Dapatkan penawaran') || t.includes('Get offer') || t.includes('Mulai') || t.includes('Langganan') ||
                             t.includes('获取折扣') ||
+                            t.includes('Dapatkan diskon') ||
+                            t.includes('Diskon') ||
+                            t.includes('diskon') ||
                             t.includes('换用此方案') ||
                             t === '升级' ||
                             t === 'Upgrade' ||
                             t.includes('Beralih') ||
                             t.includes('Switch') ||
                             t.includes('获取 Google AI Ultra') ||
-                            t.includes('Get started') ||
-                            t.includes('Get offer')
+                            t.includes('Get started')
                         );
                     });
 
@@ -2233,19 +2231,25 @@ class GoogleUltraAutomator:
         if "Google AI" in play_txt or "Google One" in play_txt:
             sub_id = await self.get_current_sub_id(page)
 
-        cfg_l1 = {
-            "name": "Step2_Layer1_12M_YTFree_ZeroCost",
-            "full_items": [
-                [[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_12M]],
-                [[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]],
-            ],
-            "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
-        }
-        ok = await self.open_and_click_subscribe(page, cfg_l1, "step2_layer1_12m")
-        if not ok:
-            self.log("⚠️ Langkah 2 pemicuan pertama tidak menyelesaikan checkout, menunggu 3 detik lalu mencoba lagi (2/2)...")
-            await asyncio.sleep(3.0)
-            ok = await self.open_and_click_subscribe(page, cfg_l1, "step2_layer1_12m")
+        combos_l1 = [
+            ("step2_layer1_12m_noyt", False),
+            ("step2_layer1_12m", True),
+        ]
+        ok = False
+        for tag, with_yt in combos_l1:
+            items = [[[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_12M]]]
+            if with_yt:
+                items.append([[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]])
+            cfg_l1 = {
+                "name": tag,
+                "full_items": items,
+                "ear8": [None, 5, None, None, None, [sub_id]] if sub_id else None,
+            }
+            ok = await self.open_and_click_subscribe(page, cfg_l1, tag)
+            if ok:
+                break
+            await asyncio.sleep(2.5)
+
         if not ok:
             raise RuntimeError(f"Langkah 2 (layer 1 gratis 12 bulan US$0.00) tidak berhasil: {self.last_subscribe_error}")
         self.log("✅ Langkah 2 (paket gratis 12 bulan layer pertama US$0.00) langganan selesai! menunggu 45 detik agar backend Google Play menyelesaikan pembayaran sepenuhnya...")
