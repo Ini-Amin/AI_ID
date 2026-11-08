@@ -1694,7 +1694,7 @@ class GoogleUltraAutomator:
         self.last_subscribe_error = ""
         target_fr = None
         clean_txt = ""
-
+        is_stacking = bool("step3" in step_tag.lower() or "step4" in step_tag.lower() or "layer2" in step_tag.lower() or "layer3" in step_tag.lower())
         # Primary trigger: one.google.com/plans?hl=id clicking the LAST action button (proven 100% reliable across L1, L2, L3)
         for attempt_i, attempt_url in enumerate(("https://one.google.com/plans?hl=id",) * 5):
             await self.wait_if_paused(page)
