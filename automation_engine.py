@@ -1848,8 +1848,8 @@ class GoogleUltraAutomator:
             if fb_btn:
                 target_fr, clean_txt = await self._poll_eacquire_modal(page, max_loops=60, step_tag=step_tag)
                 if clean_txt == "MAIN_PAGE_ERROR_RETRY":
-                    self.log(f"[{step_tag}] RPC Google One belum selesai dimuat saat tombol diklik. Menunggu 4 detik untuk stabilisasi, lalu mencoba lagi...")
-                    await asyncio.sleep(4.0)
+                    self.log(f"[{step_tag}] ⏳ Server Google One / Play sedang sibuk atau antrian transaksi sebelumnya masih dalam proses. Menunggu 5 detik untuk stabilisasi sebelum mencoba lagi...")
+                    await asyncio.sleep(5.0)
                     continue
                 if clean_txt == "INLINE_CARD_SAVED_RETRY":
                     self.log(f"[{step_tag}] Ikatan kartu inline sudah selesai, sedang membuka ulang halaman skema untuk memicu popup checkout 0 yuan...")
@@ -2273,10 +2273,11 @@ class GoogleUltraAutomator:
 
         ok = False
         combos_l2 = [
-            ("step3_layer2_6mss_noyt", False),
-            ("step3_layer2_6mss", True),
+            ("step3_layer2_6mss_noyt", False, "Samsung S25 (Tanpa YouTube)"),
+            ("step3_layer2_6mss", True, "Samsung S25 (+ YouTube Premium)"),
         ]
-        for tag, with_yt in combos_l2:
+        for tag, with_yt, desc in combos_l2:
+            self.log(f"[{tag}] 🔄 Mencoba tumpukan Layer 2 via token promo {desc}...")
             items = [[[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [TOK_PRO5TB_6M_SS]]]
             if with_yt:
                 items.append([[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]])
@@ -2311,14 +2312,15 @@ class GoogleUltraAutomator:
 
         ok = False
         combos_l3 = [
-            ("step4_layer3_6m_ss_noyt", TOK_PRO5TB_6M_SS, False),
-            ("step4_layer3_6m2_noyt", TOK_PRO5TB_6M_2, False),
-            ("step4_layer3_6m_ss", TOK_PRO5TB_6M_SS, True),
-            ("step4_layer3_6m2", TOK_PRO5TB_6M_2, True),
-            ("step4_layer3_6m_noyt", TOK_PRO5TB_6M, False),
-            ("step4_layer3_6m", TOK_PRO5TB_6M, True),
+            ("step4_layer3_6m2_noyt", TOK_PRO5TB_6M_2, False, "Partner Backup (Tanpa YouTube)"),
+            ("step4_layer3_6m2", TOK_PRO5TB_6M_2, True, "Partner Backup (+ YouTube Premium)"),
+            ("step4_layer3_6m_ss_noyt", TOK_PRO5TB_6M_SS, False, "Samsung S25 (Tanpa YouTube)"),
+            ("step4_layer3_6m_ss", TOK_PRO5TB_6M_SS, True, "Samsung S25 (+ YouTube Premium)"),
+            ("step4_layer3_6m_noyt", TOK_PRO5TB_6M, False, "Pixel Promo (Cadangan)"),
+            ("step4_layer3_6m", TOK_PRO5TB_6M, True, "Pixel Promo (+ YouTube)"),
         ]
-        for tag, tok, with_yt in combos_l3:
+        for tag, tok, with_yt, desc in combos_l3:
+            self.log(f"[{tag}] 🔄 Mencoba tumpukan Layer 3 puncak 2028 via token promo {desc}...")
             items = [[[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [tok]]]
             if with_yt:
                 items.append([[PREFIX + "g1.youtube_premium_individual_add_on", 21], None, None, None, 1, [YT_FREE_TOK]])
