@@ -1151,21 +1151,74 @@ class GoogleUltraAutomator:
             body = await page.inner_text("body", timeout=3000)
         except Exception:
             body = ""
-        if "重新订阅" in body:
+        if any(k in body for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Berlangganan lagi", "Resubscribe")):
             self.log("Mendeteksi langganan saat ini berstatus [Dibatalkan], sedang mengklik [Langganan Ulang] untuk memulihkan status aktif agar dapat lanjut menumpuk...")
-            rbtn = page.get_by_text("重新订阅", exact=True).first
+            rbtn = page.locator('button:has-text("重新订阅"), button:has-text("Langganan lagi"), button:has-text("Langganan ulang"), button:has-text("Berlangganan lagi"), button:has-text("Resubscribe"), [role="button"]:has-text("Langganan lagi"), [role="button"]:has-text("重新订阅")').first
             if await rbtn.count() > 0:
                 await rbtn.click(force=True)
                 await asyncio.sleep(3.5)
-                cbtn = page.get_by_text("重新订阅", exact=True).last
+                cbtn = page.locator('button:has-text("重新订阅"), button:has-text("Langganan lagi"), button:has-text("Langganan ulang"), button:has-text("Berlangganan lagi"), button:has-text("Resubscribe"), [role="button"]:has-text("Langganan lagi")').last
                 if await cbtn.count() > 0 and await cbtn.is_visible():
                     await cbtn.click(force=True)
                     await asyncio.sleep(5.0)
-                ok_btn = page.get_by_text("确定", exact=True).first
+                ok_btn = page.locator('button:has-text("确定"), button:has-text("Lanjutkan"), button:has-text("OK"), button:has-text("Oke"), button:has-text("Confirm")').first
                 if await ok_btn.count() > 0 and await ok_btn.is_visible():
                     await ok_btn.click(force=True)
                     await asyncio.sleep(2.0)
 
+    async def _dismiss_main_page_dialog(self, page):
+        """Tutup modal dialog error/konfirmasi 'Terjadi error' atau 'Mengerti' di halaman utama jika ada."""
+        try:
+            err_btns = page.locator('div[role="dialog"] button:has-text("Mengerti"), div[role="dialog"] button:has-text("OK"), div[role="dialog"] button:has-text("知道了"), div[role="dialog"] button:has-text("Got it")')
+            if await err_btns.count() > 0 and await err_btns.first.is_visible():
+                await err_btns.first.click(force=True)
+                await asyncio.sleep(1.0)
+        except Exception:
+            pass
+
+    async def _switch_to_annual_billing(self, page, step_tag: str):
+        """Alihkan tampilan paket Google One ke penagihan Tahunan secara eksplisit & tunggu DOM stabil sebelum mengklik tombol upgrade."""
+        try:
+            await self._dismiss_main_page_dialog(page)
+            # Cek apakah tab Tahunan sudah aktif (misal memiliki class KKjvXb atau aria-selected="true")
+            is_already_annual = await page.evaluate("""() => {
+                const tabs = Array.from(document.querySelectorAll('button, [role="tab"]'));
+                const annual = tabs.find(el => (el.innerText || '').trim() === 'Tahunan' || (el.innerText || '').trim() === 'Annual' || (el.innerText || '').trim() === '年付');
+                if (annual && (annual.className.includes('KKjvXb') || annual.getAttribute('aria-selected') === 'true')) {
+                    return true;
+                }
+                return false;
+            }""")
+            if not is_already_annual:
+                self.log(f"[{step_tag}] 🔄 Mode Stacking: Mengalihkan tampilan paket ke opsi Penagihan Tahunan (Annual)...")
+                switched = await page.evaluate("""() => {
+                    const tabs = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"], a, span'));
+                    const annual = tabs.find(el => {
+                        const t = (el.innerText || '').trim();
+                        const r = el.getBoundingClientRect();
+                        return r.width > 20 && r.height > 15 && (t === 'Tahunan' || t === 'Annual' || t === 'Yearly' || t === '年付');
+                    });
+                    if (annual) {
+                        annual.click();
+                        return true;
+                    }
+                    const switchBtn = tabs.find(el => {
+                        const t = (el.innerText || '').trim();
+                        const r = el.getBoundingClientRect();
+                        return r.width > 20 && r.height > 15 && (t === 'Beralih' || t.includes('Beralih ke tahunan') || t === 'Switch');
+                    });
+                    if (switchBtn) {
+                        switchBtn.click();
+                        return true;
+                    }
+                    return false;
+                }""")
+                if switched:
+                    # Beri jeda 2 detik agar React/Closure Google One selesai merender ulang paket Tahunan
+                    await asyncio.sleep(2.0)
+                    await self._dismiss_main_page_dialog(page)
+        except Exception as e:
+            self.log(f"[{step_tag}] Peringatan saat beralih ke tahunan: {e}")
     async def _fill_add_card_form(self, tf, page, step_tag: str) -> bool:
         """Mengisi formulir Tambahkan kartu kredit atau debit secara presisi:
         1. Menghindari loncat ke Expiry Date saat nomor kartu diinput (menggunakan atomic fill).
@@ -1668,45 +1721,36 @@ class GoogleUltraAutomator:
                 await self.pass_reauth_on_page(page)
                 await self.safe_goto(page, attempt_url, timeout=40000)
                 await asyncio.sleep(3.5)
+            # 1. Bersihkan modal dialog error jika ada
+            await self._dismiss_main_page_dialog(page)
 
+            # 2. KHUSUS STACKING (Langkah 3 & 4): Alihkan tampilan ke tab TAHUNAN terlebih dahulu secara terpisah & tunggu DOM stabil!
+            if is_stacking:
+                await self._switch_to_annual_billing(page, step_tag)
+
+            # 3. Pasang HOOK_JS & konfigurasi offer token
             await page.evaluate(HOOK_JS)
             await page.evaluate(f"if (typeof window.__setDirectTest === 'function') window.__setDirectTest({json.dumps(cfg)}); else window.__INIT_TEST = {json.dumps(cfg)};")
 
-            is_stacking = bool("step3" in step_tag.lower() or "step4" in step_tag.lower() or "layer2" in step_tag.lower() or "layer3" in step_tag.lower())
             fb_btn = None
             for _ in range(10):
                 await asyncio.sleep(1.2)
                 await page.evaluate(HOOK_JS)
                 await page.evaluate(f"if (typeof window.__setDirectTest === 'function') window.__setDirectTest({json.dumps(cfg)}); else window.__INIT_TEST = {json.dumps(cfg)};")
                 fb_btn = await page.evaluate(
-                    f"""() => {{
+                    """() => {
                     // Tutup modal error lama jika ada
                     const errBtns = Array.from(document.querySelectorAll('div[role="dialog"] button, [role="dialog"] [role="button"]'));
-                    for (const eb of errBtns) {{
+                    for (const eb of errBtns) {
                         const ebt = (eb.innerText || '').trim();
-                        if (ebt === 'Mengerti' || ebt === 'OK' || ebt === '知道了' || ebt === 'Got it') {{
+                        if (ebt === 'Mengerti' || ebt === 'OK' || ebt === '知道了' || ebt === 'Got it') {
                             eb.click();
                             break;
-                        }}
-                    }}
-
-                    // Khusus Langkah 3 & Langkah 4 (tumpukan 18M & 24M): Google One mewajibkan beralih ke opsi TAHUNAN agar Mode 5 Stacking aktif
-                    if ({json.dumps(is_stacking)}) {{
-                        const tabs = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"], span, a'));
-                        const annualTab = tabs.find(el => {{
-                            const t = (el.innerText || '').trim();
-                            const r = el.getBoundingClientRect();
-                            return r.width > 20 && r.height > 15 && (
-                                t === 'Tahunan' || t === '年付' || t === 'Annual' || t === 'Yearly' || t === 'Beralih' || t.includes('Beralih ke tahunan')
-                            );
-                        }});
-                        if (annualTab) {{
-                            annualTab.click();
-                        }}
-                    }}
+                        }
+                    }
 
                     const els = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-                    const btns = els.filter(e => {{
+                    const btns = els.filter(e => {
                         const t = (e.innerText || '').trim();
                         const r = e.getBoundingClientRect();
                         return r.width > 15 && r.height > 15 && r.left >= 240 && (
@@ -1722,16 +1766,16 @@ class GoogleUltraAutomator:
                             t.includes('Get started') ||
                             t.includes('Get offer')
                         );
-                    }});
-                    if (btns.length > 0) {{
+                    });
+                    if (btns.length > 0) {
                         const btn = btns[btns.length - 1];
-                        btn.scrollIntoView({{block: 'center'}});
+                        btn.scrollIntoView({block: 'center'});
                         const r = btn.getBoundingClientRect();
                         btn.click();
-                        return {{x: r.left + r.width / 2, y: r.top + r.height / 2, text: (btn.innerText || '').trim()}};
-                    }}
+                        return {x: r.left + r.width / 2, y: r.top + r.height / 2, text: (btn.innerText || '').trim()};
+                    }
                     return null;
-                }}"""
+                }"""
                 )
                 if fb_btn:
                     self.log(f"[{step_tag}] Sudah mengklik【{fb_btn.get("text", "")}】tombol pemicu, menunggu popup checkout Google Play...")
@@ -1805,10 +1849,13 @@ class GoogleUltraAutomator:
             b = all_btns.nth(i)
             try:
                 btxt = (await b.inner_text()).strip()
-                btxt_l = btxt.lower()
-                if btxt in ("订阅", "Subscribe", "Langganan", "Berlangganan") or "langganan" in btxt_l or "subscribe" in btxt_l or "订阅" in btxt:
+                clean_btn = re.sub(r"\s+", " ", btxt).strip()
+                # Hindari mencocokkan teks disclaimer/kebijakan panjang yang memuat kata 'Langganan'
+                is_sub_btn = clean_btn in ("订阅", "Subscribe", "Langganan", "Berlangganan") or \
+                             (len(clean_btn) <= 25 and clean_btn.lower() in ("langganan", "berlangganan", "subscribe", "subscribe now", "langganan sekarang"))
+                if is_sub_btn:
                     target_btn = b
-                    self.log(f"--> Sedang mengklik tombol [{btxt}] [{step_tag}] via Playwright trusted click...")
+                    self.log(f"--> Sedang mengklik tombol [{clean_btn}] [{step_tag}] via Playwright trusted click...")
                     try:
                         await b.scroll_into_view_if_needed(timeout=3000)
                         await b.click(timeout=5000)
@@ -1823,14 +1870,14 @@ class GoogleUltraAutomator:
             except Exception as click_err:
                 self.log(f"[{step_tag}] Pesan klik biasa ({click_err}), mencoba metode lain...")
 
-        # Fallback 2: Direct text locator (Playwright trusted click)
+        # Fallback 2: Direct text locator (Playwright trusted click with exact match)
         if not clicked:
             try:
                 direct_sub = target_fr.locator(
-                    'button:has-text("Langganan"), button:has-text("Berlangganan"), button:has-text("Subscribe"), button:has-text("订阅"), [role="button"]:has-text("Langganan"), [role="button"]:has-text("Berlangganan"), [role="button"]:has-text("Subscribe"), [role="button"]:has-text("订阅")'
+                    'button:text-is("Langganan"), button:text-is("Berlangganan"), button:text-is("Subscribe"), button:text-is("订阅"), [role="button"]:text-is("Langganan"), [role="button"]:text-is("Berlangganan"), [role="button"]:text-is("Subscribe"), [role="button"]:text-is("订阅")'
                 ).first
-                if await direct_sub.count() > 0:
-                    self.log(f"--> Mengklik tombol via direct text locator...")
+                if await direct_sub.count() > 0 and await direct_sub.is_visible():
+                    self.log(f"--> Mengklik tombol via exact text locator...")
                     await direct_sub.scroll_into_view_if_needed(timeout=3000)
                     await direct_sub.click(force=True, timeout=5000)
                     clicked = True
@@ -1851,14 +1898,16 @@ class GoogleUltraAutomator:
             except Exception as box_err:
                 self.log(f"[{step_tag}] Gagal klik koordinat mouse: {box_err}")
 
-        # Fallback 4: Native JS dispatch (last resort)
+        # Fallback 4: Native JS dispatch (last resort with exact short text filter)
         if not clicked:
             js_clicked = await target_fr.evaluate(
                 """() => {
                 const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
                 const sub = btns.find(b => {
                     const bt = (b.innerText || '').trim().toLowerCase();
-                    return bt === '订阅' || bt === 'subscribe' || bt === 'berlangganan' || bt === 'langganan' || bt.includes('langganan');
+                    const r = b.getBoundingClientRect();
+                    return (bt === 'langganan' || bt === 'subscribe' || bt === 'berlangganan' || bt === '订阅') &&
+                           r.width > 20 && r.height > 15;
                 });
                 if (sub) {
                     sub.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
@@ -1873,7 +1922,6 @@ class GoogleUltraAutomator:
             if js_clicked:
                 self.log(f"--> Berhasil memicu klik tombol [Langganan/Subscribe] [{step_tag}] via native JS event！")
                 clicked = True
-
         if not clicked:
             self.log(f"⚠️ [{step_tag}] Tombol [Langganan/Subscribe] tidak ditemukan")
             return False
