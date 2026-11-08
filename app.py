@@ -260,7 +260,7 @@ async def test_proxy(req: ProxyTestReq):
         city = data.get("city", "")
         org = data.get("connection", {}).get("org", "")
         flag = "🇧🇴" if cc == "BO" else ("🇹🇷" if cc == "TR" else "🌐")
-        bal_str = f" | FloppyData 剩余流量: {bal_gb} GB" if bal_gb is not None else ""
+        bal_str = f" | FloppyData Sisa Kuota: {bal_gb} GB" if bal_gb is not None else ""
         msg = f"{flag} Koneksi Berhasil! IP Keluar: {ip} ({country} · {city} | {org}){bal_str}"
         append_log(f"[{time.strftime('%H:%M:%S')}] [PROXY] ✅ {msg}")
         return {"ok": True, "message": msg, "ip": ip, "country_code": cc, "balance_gb": bal_gb}

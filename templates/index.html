@@ -1000,8 +1000,8 @@
       const isAtBottom = term.scrollHeight - term.clientHeight <= term.scrollTop + 40;
       term.innerHTML = logs.map(line => {
         let cls = 'log-line';
-        if (line.includes('⚠️') || line.includes('人机验证')) cls += ' log-warn';
-        else if (line.includes('❌') || line.includes('异常')) cls += ' log-err';
+        if (line.includes('⚠️') || line.includes('人机验证') || line.includes('verifikasi') || line.includes('perhatian')) cls += ' log-warn';
+        else if (line.includes('❌') || line.includes('异常') || line.includes('error') || line.includes('gagal') || line.includes('anomali')) cls += ' log-err';
         else if (line.includes('✅') || line.includes('🎉')) cls += ' log-ok';
         return `<div class="${cls}">${escapeHtml(line)}</div>`;
       }).join('');
@@ -1026,7 +1026,7 @@
       btn.disabled = true;
       btn.textContent = '⏳ Sedang Menguji Alamat IP Keluar...';
       resBox.style.color = '#38bdf8';
-      resBox.textContent = '正在测试代理连通性...';
+      resBox.textContent = 'Sedang menguji konektivitas proksi...';
       try {
         const region = document.getElementById('cfgTargetRegion').value;
         const tpl = document.getElementById('cfgProxyTemplate').value.trim();

@@ -1786,7 +1786,7 @@ class GoogleUltraAutomator:
                 await page.evaluate(HOOK_JS)
                 await page.evaluate(f"if (typeof window.__setDirectTest === 'function') window.__setDirectTest({json.dumps(cfg)}); else window.__INIT_TEST = {json.dumps(cfg)};")
                 fb_btn = await page.evaluate(
-                    """() => {
+                    """(stepTag) => {
                     // Tutup modal error lama jika ada
                     const errBtns = Array.from(document.querySelectorAll('div[role="dialog"] button, [role="dialog"] [role="button"]'));
                     for (const eb of errBtns) {
@@ -1818,8 +1818,10 @@ class GoogleUltraAutomator:
                         );
                     });
 
-                    // Jika berada di halaman kelola paket (settings?expand=upgrade), utamakan tombol [Beralih / Switch] di banner tahunan!
-                    if (location.href.includes('settings') || location.href.includes('expand=upgrade')) {
+                    const isStep4 = (stepTag.toLowerCase().includes('step4') || stepTag.toLowerCase().includes('layer3'));
+
+                    // Untuk Step 3: Jika di halaman kelola paket, utamakan tombol [Beralih / Switch] untuk transisi ke tahunan
+                    if (!isStep4 && (location.href.includes('settings') || location.href.includes('expand=upgrade'))) {
                         const switchBtn = btns.find(b => {
                             const t = (b.innerText || '').trim();
                             return t === 'Beralih' || t.includes('Beralih') || t === 'Switch' || t.includes('Switch');
@@ -1831,6 +1833,19 @@ class GoogleUltraAutomator:
                         }
                     }
 
+                    // Untuk Step 4: Transisi tahunan sudah aktif, klik tombol [Upgrade] pada kartu paket di bawah tab Tahunan
+                    if (isStep4 && (location.href.includes('settings') || location.href.includes('expand=upgrade'))) {
+                        const upgradeBtn = btns.find(b => {
+                            const t = (b.innerText || '').trim();
+                            return (t === 'Upgrade' || t === '升级') && b.getBoundingClientRect().top > 500;
+                        });
+                        if (upgradeBtn) {
+                            upgradeBtn.scrollIntoView({block: 'center'});
+                            upgradeBtn.click();
+                            return {x: 0, y: 0, text: (upgradeBtn.innerText || '').trim()};
+                        }
+                    }
+
                     if (btns.length > 0) {
                         const btn = btns[btns.length - 1];
                         btn.scrollIntoView({block: 'center'});
@@ -1839,7 +1854,8 @@ class GoogleUltraAutomator:
                         return {x: r.left + r.width / 2, y: r.top + r.height / 2, text: (btn.innerText || '').trim()};
                     }
                     return null;
-                }"""
+                }""",
+                    step_tag
                 )
                 if fb_btn:
                     self.log(f"[{step_tag}] Sudah mengklik【{fb_btn.get("text", "")}】tombol pemicu, menunggu popup checkout Google Play...")
@@ -2196,7 +2212,7 @@ class GoogleUltraAutomator:
                     await self.save_screenshot(page, f"{step_tag}_after_click")
                     await asyncio.sleep(4.0)
                     return True
-                self.log(f"⚠️ [{step_tag}] 结账弹窗已关闭但未捕获到【已订阅/Play积分】明确成功标志，正在校验后台订阅状态...")
+                self.log(f"⚠️ [{step_tag}] Popup checkout telah ditutup tetapi belum menangkap tanda sukses [Langganan/Play Points] yang jelas, sedang memverifikasi status langganan di backend...")
                 await asyncio.sleep(5.0)
                 await self.save_screenshot(page, f"{step_tag}_after_click")
                 post_click_err = "Popup checkout tertutup tanpa tanda konfirmasi [Subscribed], kemungkinan transaksi tertahan di backend"
@@ -2467,7 +2483,7 @@ class GoogleUltraAutomator:
             expiry_date=exp_str,
             last_screenshot=final_shot,
         )
-        self.log(f"🎉 账号 {self.account['email']} Seluruh alur Pro 2 tahun tanpa biaya selesai dijalankan! Paket: {plan_found}, waktu kedaluwarsa: {exp_str}")
+        self.log(f"🎉 Akun {self.account['email']} Seluruh alur Pro 2 tahun tanpa biaya selesai dijalankan! Paket: {plan_found}, masa aktif: {exp_str}")
 
     # Keep step7_cancel_and_verify alias for compatibility
     step7_cancel_and_verify = step5_cancel_and_verify
