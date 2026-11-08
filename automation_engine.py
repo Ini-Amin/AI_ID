@@ -56,6 +56,119 @@ def find_free_port(start_port: int = 9520) -> int:
             except OSError:
                 continue
     return start_port
+def generate_random_us_name() -> str:
+    """Menghasilkan nama acak/random US persona yang alami & realistis agar nama asli pemilik akun tidak pernah bocor."""
+    import random
+    firsts = ("James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Donald", "Steven", "Paul", "Andrew", "Joshua", "Kevin", "Brian", "George", "Edward", "Ronald", "Timothy", "Jason", "Jeffrey", "Ryan", "Jacob", "Gary", "Nicholas", "Eric", "Jonathan", "Stephen", "Larry", "Justin", "Scott", "Brandon", "Benjamin", "Samuel", "Gregory", "Frank", "Alexander", "Raymond", "Patrick", "Jack", "Dennis", "Jerry", "Tyler", "Aaron", "Jose")
+    lasts = ("Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores", "Green", "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell", "Carter", "Roberts")
+    return f"{random.choice(firsts)} {random.choice(lasts)}"
+
+
+async def auto_solve_recaptcha(page_obj, log_fn=None) -> bool:
+    """Ototmatis centang checkbox reCAPTCHA & pecahkan tantangan audio jika muncul via Google Speech API."""
+    anchor_fr = None
+    try:
+        for p in page_obj.context.pages:
+            for f in p.frames:
+                if "recaptcha" in (f.url or "") and "anchor" in (f.url or ""):
+                    anchor_fr = f
+                    break
+            if anchor_fr:
+                break
+    except Exception:
+        pass
+
+    if not anchor_fr:
+        return True
+
+    try:
+        cb = anchor_fr.locator("#recaptcha-anchor")
+        if await cb.count() > 0:
+            if log_fn:
+                log_fn("🤖 Mengklik checkbox reCAPTCHA secara otomatis...")
+            await cb.click(timeout=5000)
+            await asyncio.sleep(2.5)
+            if await anchor_fr.locator("#recaptcha-anchor[aria-checked='true']").count() > 0:
+                if log_fn:
+                    log_fn("✅ reCAPTCHA lolos otomatis tanpa tantangan gambar!")
+                return True
+    except Exception:
+        pass
+
+    bframe = None
+    try:
+        for p in page_obj.context.pages:
+            for f in p.frames:
+                if "recaptcha" in (f.url or "") and "bframe" in (f.url or ""):
+                    bframe = f
+                    break
+            if bframe:
+                break
+    except Exception:
+        pass
+
+    if not bframe:
+        return True
+
+    for attempt in range(2):
+        try:
+            audio_btn = bframe.locator("#recaptcha-audio-button")
+            if await audio_btn.count() > 0 and await audio_btn.is_visible():
+                if log_fn:
+                    log_fn(f"🎧 Mencoba bypass reCAPTCHA via tantangan suara (Percobaan {attempt + 1}/2)...")
+                await audio_btn.click(timeout=5000)
+                await asyncio.sleep(2.5)
+
+            if await bframe.locator(".rc-doscaptcha-body").count() > 0:
+                if log_fn:
+                    log_fn("⚠️ Tantangan suara dibatasi oleh Google (doscaptcha).")
+                break
+
+            dl = bframe.locator("a.rc-audiochallenge-tdownload-link")
+            if await dl.count() > 0:
+                audio_url = await dl.first.get_attribute("href")
+                if audio_url:
+                    import tempfile, urllib.request, subprocess, json
+                    with tempfile.TemporaryDirectory() as d:
+                        mp3_p = os.path.join(d, "c.mp3")
+                        flac_p = os.path.join(d, "c.flac")
+                        urllib.request.urlretrieve(audio_url, mp3_p)
+                        subprocess.run(f"ffmpeg -y -i '{mp3_p}' -ar 16000 '{flac_p}'", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        if os.path.exists(flac_p):
+                            with open(flac_p, "rb") as flac_f:
+                                flac_bytes = flac_f.read()
+                            api_url = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang=en-US&key=AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
+                            req = urllib.request.Request(api_url, data=flac_bytes, headers={"Content-Type": "audio/x-flac; rate=16000"})
+                            resp = urllib.request.urlopen(req, timeout=12)
+                            body_lines = resp.read().decode("utf-8").splitlines()
+                            transcript = ""
+                            for line in body_lines:
+                                try:
+                                    j = json.loads(line)
+                                    if j.get("result"):
+                                        transcript = j["result"][0]["alternative"][0]["transcript"]
+                                        break
+                                except Exception:
+                                    pass
+                            if transcript:
+                                if log_fn:
+                                    log_fn(f"✅ Transkripsi suara berhasil: '{transcript}', mengirimkan jawaban...")
+                                resp_inp = bframe.locator("#audio-response")
+                                await resp_inp.click()
+                                await resp_inp.fill(transcript)
+                                await asyncio.sleep(0.3)
+                                await bframe.locator("#recaptcha-verify-button").click()
+                                await asyncio.sleep(2.5)
+                                if anchor_fr and await anchor_fr.locator("#recaptcha-anchor[aria-checked='true']").count() > 0:
+                                    if log_fn:
+                                        log_fn("🎉 reCAPTCHA berhasil dilewati secara otomatis!")
+                                    return True
+        except Exception as e:
+            if log_fn:
+                log_fn(f"Peringatan audio solver: {e}")
+
+    return False
+
 
 
 def kill_pid(pid: int):
@@ -848,24 +961,14 @@ class GoogleUltraAutomator:
                 continue
 
             if "challenge/recaptcha" in page_obj.url or "证明您不是自动程序" in body or "not a robot" in body:
-                for fr in page_obj.frames:
-                    if "recaptcha" in (fr.url or "") and "anchor" in (fr.url or ""):
-                        try:
-                            cb = fr.locator("#recaptcha-anchor")
-                            if await cb.count() > 0:
-                                self.log("Mendeteksi kotak verifikasi manusia masuk (challenge/recaptcha), sedang mencentang secara otomatis...")
-                                await cb.click()
-                                await asyncio.sleep(4.0)
-                                break
-                        except Exception:
-                            pass
-                # Periksa apakah tantangan CAPTCHA masih ada (misal gambar tile)
-                b_chk = ""
-                try: b_chk = await page_obj.inner_text("body", timeout=1500)
-                except Exception: pass
-                if "challenge/recaptcha" in page_obj.url or "证明您不是自动程序" in b_chk or "not a robot" in b_chk:
-                    await self.wait_for_human(page_obj, reason="Selesaikan verifikasi CAPTCHA di jendela Chrome...", timeout=180,
-                        success_checker=lambda p: "challenge/recaptcha" not in (p.url or ""))
+                solved = await auto_solve_recaptcha(page_obj, log_fn=self.log)
+                if not solved:
+                    b_chk = ""
+                    try: b_chk = await page_obj.inner_text("body", timeout=1500)
+                    except Exception: pass
+                    if "challenge/recaptcha" in page_obj.url or "证明您不是自动程序" in b_chk or "not a robot" in b_chk:
+                        await self.wait_for_human(page_obj, reason="Selesaikan verifikasi CAPTCHA di jendela Chrome...", timeout=180,
+                            success_checker=lambda p: "challenge/recaptcha" not in (p.url or ""))
                 continue
 
             # Check if an open dialog modal (VfPpkd-Sx9Kwc-OWXEXe-FNFY6c) is shown on top of the page
@@ -1230,7 +1333,8 @@ class GoogleUltraAutomator:
         expm = (self.card.get("exp_month") or "").zfill(2)
         expy = (self.card.get("exp_year") or "")[-2:]
         cvc_v = (self.card.get("cvc") or "").strip()
-        holder_v = (self.card.get("holder") or "CARD HOLDER").strip()
+        # Selalu gunakan nama acak/random US persona demi privasi (agar nama asli pemilik akun tidak pernah muncul)
+        holder_v = generate_random_us_name()
         zip_v = (self.card.get("postal_code") or "97201").strip()
         addr1_v = (self.card.get("address_line1") or "700 SW 5th Ave").strip()
         city_v = (self.card.get("locality") or "Portland").strip()
@@ -1384,19 +1488,26 @@ class GoogleUltraAutomator:
             loops_left -= 1
             self.check_stop()
             await self.wait_if_paused(page)
-            # Cek apakah muncul teka-teki gambar reCAPTCHA (bframe)
+            # Cek dan pecahkan reCAPTCHA secara otomatis terlebih dahulu
+            has_recaptcha = False
             for p in page.context.pages:
-                for fr in p.frames:
-                    if "recaptcha" in (fr.url or "") and "bframe" in (fr.url or ""):
-                        self.log("🖐️ Terdeteksi teka-teki gambar reCAPTCHA saat verifikasi kartu. Membutuhkan penyelesaian manual pengguna!")
-                        await self.wait_for_human(
-                            page,
-                            reason="Silakan selesaikan teka-teki gambar reCAPTCHA di jendela Chrome Anda...",
-                            timeout=180,
-                            success_checker=lambda pg: not any("bframe" in (f.url or "") for pge in pg.context.pages for f in pge.frames)
-                        )
-                        break
-
+                if any("recaptcha" in (f.url or "") for f in p.frames):
+                    has_recaptcha = True
+                    break
+            if has_recaptcha:
+                solved = await auto_solve_recaptcha(page, log_fn=self.log)
+                if not solved:
+                    for p in page.context.pages:
+                        for fr in p.frames:
+                            if "recaptcha" in (fr.url or "") and "bframe" in (fr.url or ""):
+                                self.log("🖐️ Tantangan gambar reCAPTCHA memerlukan verifikasi manual pengguna...")
+                                await self.wait_for_human(
+                                    page,
+                                    reason="Silakan selesaikan teka-teki gambar reCAPTCHA di jendela Chrome Anda...",
+                                    timeout=180,
+                                    success_checker=lambda pg: not any("bframe" in (f.url or "") for pge in pg.context.pages for f in pge.frames)
+                                )
+                                break
             if "accounts.google.com" in page.url or "gds.google.com" in page.url:
                 self.log(f"[{step_tag or 'modal'}] Mendeteksi pengalihan ke halaman verifikasi masuk ({page.url[:60]}), sedang menyelesaikan autentikasi secara otomatis...")
                 await self.pass_reauth_on_page(page)
