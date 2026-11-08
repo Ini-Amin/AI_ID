@@ -1270,12 +1270,20 @@ class GoogleUltraAutomator:
                     await asyncio.sleep(2.0)
 
     async def _dismiss_main_page_dialog(self, page):
-        """Tutup modal dialog error/konfirmasi 'Terjadi error' atau 'Mengerti' di halaman utama jika ada."""
+        """Tutup modal dialog error/konfirmasi 'Terjadi error' atau 'Mengerti' di main frame maupun di dalam iframe mana pun."""
         try:
-            err_btns = page.locator('div[role="dialog"] button:has-text("Mengerti"), div[role="dialog"] button:has-text("OK"), div[role="dialog"] button:has-text("知道了"), div[role="dialog"] button:has-text("Got it")')
-            if await err_btns.count() > 0 and await err_btns.first.is_visible():
-                await err_btns.first.click(force=True)
-                await asyncio.sleep(1.0)
+            for p in page.context.pages:
+                for f in p.frames:
+                    try:
+                        err_btns = f.locator('button:has-text("Mengerti"), button:has-text("OK"), button:has-text("知道了"), button:has-text("Got it")')
+                        cnt = await err_btns.count()
+                        for idx in range(cnt):
+                            b = err_btns.nth(idx)
+                            if await b.is_visible():
+                                await b.click(force=True)
+                                await asyncio.sleep(0.5)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -1756,13 +1764,22 @@ class GoogleUltraAutomator:
                 await self.pass_reauth_on_page(page)
                 await self.safe_goto(page, attempt_url, timeout=40000)
                 await asyncio.sleep(3.5)
-            # 1. Bersihkan modal dialog error jika ada
+            # 1. Bersihkan modal dialog error jika ada di seluruh frame
             await self._dismiss_main_page_dialog(page)
 
-            # 2. KHUSUS STACKING (Langkah 3 & 4): Alihkan tampilan ke tab TAHUNAN terlebih dahulu secara terpisah & tunggu DOM stabil!
-            if is_stacking:
-                await self._switch_to_annual_billing(page, step_tag)
+            # Jika akun dialihkan ke halaman settings?expand=upgrade saat menjalankan Langkah 2:
+            # Ini adalah sinyal pasti bahwa akun SUDAH memiliki paket Google AI Pro (5 TB) aktif!
+            if ("settings" in page.url or "expand=upgrade" in page.url) and "step2" in step_tag.lower():
+                self.log(f"[{step_tag}] ✅ Halaman dialihkan ke Kelola Langganan (settings?expand=upgrade), menandakan akun ini sudah memiliki paket Google AI Pro (5 TB) aktif! Langkah 2 otomatis selesai.")
+                return True
 
+            # 2. Jika di halaman terdapat tab Tahunan atau berada di halaman kelola paket, selalu alihkan ke tab TAHUNAN!
+            has_annual_tab = await page.evaluate("""() => {
+                const tabs = Array.from(document.querySelectorAll('button, [role="tab"]'));
+                return tabs.some(el => (el.innerText || '').trim() === 'Tahunan' || (el.innerText || '').trim() === 'Annual' || (el.innerText || '').trim() === 'Beralih');
+            }""")
+            if is_stacking or has_annual_tab or "settings" in page.url:
+                await self._switch_to_annual_billing(page, step_tag)
             # 3. Pasang HOOK_JS & konfigurasi offer token
             await page.evaluate(HOOK_JS)
             await page.evaluate(f"if (typeof window.__setDirectTest === 'function') window.__setDirectTest({json.dumps(cfg)}); else window.__INIT_TEST = {json.dumps(cfg)};")
@@ -2190,12 +2207,11 @@ class GoogleUltraAutomator:
         if "2028" in play_txt:
             self.log("✅ Mendeteksi akun ini sudah memasuki masa gratis 2028, otomatis melewatkan Langkah 2！")
             return
-        if any(k in play_txt for k in ("2027年10月", "2027年11月", "2027年12月", "Oct 2027", "Nov 2027", "Dec 2027", "Okt 2027", "Des 2027", "Oktober 2027", "November 2027", "Desember 2027")):
+        if "Google AI Pro" in play_txt or "Google One" in play_txt or any(k in play_txt for k in ("2027年", "Oct 2027", "Nov 2027", "Dec 2027", "Okt 2027", "Des 2027", "Oktober 2027", "November 2027", "Desember 2027")):
             if any(k in play_txt for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe")):
                 await self.ensure_subscription_active(page)
-            self.log("✅ Mendeteksi akun ini sudah menyelesaikan tumpukan layer pertama 12 bulan gratis, otomatis melewatkan Langkah 2！")
+            self.log("✅ Mendeteksi akun ini sudah memiliki langganan Google AI Pro aktif di Google Play, otomatis melewatkan Langkah 2！")
             return
-
         if any(k in play_txt for k in ("重新订阅", "Langganan lagi", "Langganan ulang", "Resubscribe")):
             await self.ensure_subscription_active(page)
 
@@ -2548,11 +2564,12 @@ class GoogleUltraAutomator:
             if not self.stop_requested:
                 self.log("ℹ️ Jendela Chrome dibiarkan terbuka agar Anda dapat memeriksa atau mengambil alih secara manual. Klik [⏹ Hentikan] jika ingin menutupnya.")
         finally:
-            if self.proxy_bridge:
-                try:
-                    await self.proxy_bridge.stop()
-                except Exception:
-                    pass
-                self.proxy_bridge = None
-            if self.stop_requested and self.proc:
-                kill_pid(self.proc.pid)
+            if self.stop_requested:
+                if self.proxy_bridge:
+                    try:
+                        await self.proxy_bridge.stop()
+                    except Exception:
+                        pass
+                    self.proxy_bridge = None
+                if self.proc:
+                    kill_pid(self.proc.pid)
