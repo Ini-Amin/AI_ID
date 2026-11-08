@@ -1819,6 +1819,20 @@ class GoogleUltraAutomator:
                             t.includes('Get offer')
                         );
                     });
+
+                    // Jika berada di halaman kelola paket (settings?expand=upgrade), utamakan tombol [Beralih / Switch] di banner tahunan!
+                    if (location.href.includes('settings') || location.href.includes('expand=upgrade')) {
+                        const switchBtn = btns.find(b => {
+                            const t = (b.innerText || '').trim();
+                            return t === 'Beralih' || t.includes('Beralih') || t === 'Switch' || t.includes('Switch');
+                        });
+                        if (switchBtn) {
+                            switchBtn.scrollIntoView({block: 'center'});
+                            switchBtn.click();
+                            return {x: 0, y: 0, text: (switchBtn.innerText || '').trim()};
+                        }
+                    }
+
                     if (btns.length > 0) {
                         const btn = btns[btns.length - 1];
                         btn.scrollIntoView({block: 'center'});
@@ -2293,10 +2307,12 @@ class GoogleUltraAutomator:
 
         ok = False
         combos_l3 = [
-            ("step4_layer3_6m_noyt", TOK_PRO5TB_6M, False),
+            ("step4_layer3_6m_ss_noyt", TOK_PRO5TB_6M_SS, False),
             ("step4_layer3_6m2_noyt", TOK_PRO5TB_6M_2, False),
-            ("step4_layer3_6m", TOK_PRO5TB_6M, True),
+            ("step4_layer3_6m_ss", TOK_PRO5TB_6M_SS, True),
             ("step4_layer3_6m2", TOK_PRO5TB_6M_2, True),
+            ("step4_layer3_6m_noyt", TOK_PRO5TB_6M, False),
+            ("step4_layer3_6m", TOK_PRO5TB_6M, True),
         ]
         for tag, tok, with_yt in combos_l3:
             items = [[[PREFIX + "g1.2tb.ai.subs_variant", 21], None, None, None, 1, [tok]]]
@@ -2407,9 +2423,36 @@ class GoogleUltraAutomator:
         self.log(f"Status halaman langganan Play akhir: {final_txt[:400]}")
 
         # Parse expiry date from final_txt
-        m_date = re.search(r"(?:取消日期[：:]\s*|续订日期[：:]\s*|将于\s*|Tanggal pembatalan[：:]\s*|Dibatalkan pada\s*|Berakhir pada\s*)([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4}|[0-9]{4}[年/-][0-9]{1,2}[月/-][0-9]{1,2}(?:日)?)", final_txt)
+        m_date = re.search(r"(?:取消日期[：:]\s*|续订日期[：:]\s*|将于\s*|Tanggal pembatalan[：:]\s*|Dibatalkan pada\s*|Berakhir pada\s*|Pembayaran berikutnya[：:]\s*)([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4}|[0-9]{4}[年/-][0-9]{1,2}[月/-][0-9]{1,2}(?:日)?)", final_txt)
         exp_str = m_date.group(1) if m_date else "Sudah Aktif (lihat screenshot)"
         plan_found = "Google AI Pro (5 TB)" if "5 TB" in final_txt else ("Google AI Ultra (20 TB)" if "20 TB" in final_txt else ("Google AI Ultra (30 TB)" if "30 TB" in final_txt else "Google AI Pro"))
+
+        has_2028 = "2028" in final_txt or "2028" in exp_str
+        is_cancelled = any(k in final_txt for k in ("取消日期", "Tanggal pembatalan", "Dibatalkan pada", "已取消", "Dibatalkan", "Berakhir pada"))
+
+        if not has_2028:
+            warn_msg = f"Langganan belum mencapai 24 bulan / 2028 (saat ini: {exp_str}). Silakan selesaikan Langkah 3 & 4 terlebih dahulu."
+            self.log(f"⚠️ [{step_tag}] {warn_msg}")
+            self.update_state(
+                status="error",
+                current_step=5,
+                step_message=f"⚠️ {warn_msg}",
+                expiry_date=exp_str,
+                last_screenshot=final_shot,
+            )
+            return
+
+        if self.auto_cancel and not is_cancelled:
+            warn_msg = f"Perpanjangan otomatis belum dibatalkan (saat ini: {exp_str}). Harap batalkan manual di Google Play."
+            self.log(f"⚠️ [{step_tag}] {warn_msg}")
+            self.update_state(
+                status="error",
+                current_step=5,
+                step_message=f"⚠️ {warn_msg}",
+                expiry_date=exp_str,
+                last_screenshot=final_shot,
+            )
+            return
 
         self.update_state(
             status="completed",
