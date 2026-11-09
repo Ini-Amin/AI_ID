@@ -36,4 +36,4 @@ run.bat
 Setelah server aktif, browser akan otomatis membuka:
 👉 **http://127.0.0.1:8765**
 
-> ⚠️ **Catatan Penting:** Gunakan akun sekunder (tumbal) dan kartu kredit/debit virtual dengan saldo $0.
+> ⚠️ **Catatan Penting:** Gunakan akun sekunder (tumbal) dan kartu kredit/debit virtual dengan saldo $1.
